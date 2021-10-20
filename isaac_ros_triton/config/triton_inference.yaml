@@ -1,0 +1,124 @@
+# Copyright (c) 2020-2021, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+%YAML 1.2
+---
+name: triton_server
+components:
+- name: server
+  type: nvidia::triton::TritonServer
+  parameters:
+    log_level: 2
+    model_repository_paths: ["/tmp/models"]
+    backend_directory_path: "/opt/tritonserver/backends"
+---
+name: triton_request
+components:
+- name: input
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 25
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: input
+    min_size: 1
+- name: inferencer_impl
+  type: nvidia::triton::TritonInferencerImpl
+  parameters:
+    server: triton_server/server
+    model_name: model
+    model_version: 1
+    num_concurrent_requests: 65535
+    max_batch_size: 8
+    async_scheduling_term: triton_response/async_st
+    inference_mode: Direct
+- name: requester
+  type: nvidia::triton::TritonInferenceRequest
+  parameters:
+    inferencer: inferencer_impl
+    rx: [input]
+    input_tensor_names: [input]
+    input_binding_names: [input]
+---
+name: triton_response
+components:
+- name: output
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 25
+    policy: 0
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: output
+    min_size: 1
+- type: nvidia::triton::TritonInferenceResponse
+  parameters:
+    inferencer: triton_request/inferencer_impl
+    tx: output
+    output_tensor_names: [output]
+    output_binding_names: [output]
+- name: async_st
+  type: nvidia::gxf::AsynchronousSchedulingTerm
+---
+name: tx
+components:
+- name: tensor
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 25
+    policy: 0
+- name: allocator
+  type: nvidia::gxf::UnboundedAllocator
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: tensor
+    min_size: 1
+- type: nvidia::isaac_ros::RosBridgeTensorSubscriber
+  parameters:
+    signal: tensor
+    allocator: allocator
+    topic_name: tensor_pub
+    storage_type: 1
+    qos: 10
+    publish_release_delay_ms: 200
+---
+name: rx
+components:
+- name: tensor
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 25
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: tensor
+    min_size: 1
+- type: nvidia::isaac_ros::RosBridgeTensorPublisher
+  parameters:
+    signal: tensor
+    topic_name: tensor_sub
+    qos: 1000
+---
+name: connections
+components:
+- type: nvidia::gxf::Connection
+  parameters:
+    source: tx/tensor
+    target: triton_request/input
+- type: nvidia::gxf::Connection
+  parameters:
+    source: triton_response/output
+    target: rx/tensor
+---
+name: utils
+components:
+- name: clock
+  type: nvidia::gxf::RealtimeClock
+- type: nvidia::gxf::GreedyScheduler
+  parameters:
+    clock: clock
