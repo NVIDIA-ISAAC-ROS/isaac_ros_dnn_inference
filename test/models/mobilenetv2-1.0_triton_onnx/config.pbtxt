@@ -1,0 +1,22 @@
+name: "mobilenetv2-1.0_triton_onnx"
+platform: "onnxruntime_onnx"
+max_batch_size: 0
+input [
+  {
+    name: "data"
+    data_type: TYPE_FP32
+    dims: [ 1, 3, 224, 224 ]
+  }
+]
+output [
+  {
+    name: "mobilenetv20_output_flatten0_reshape0"
+    data_type: TYPE_FP32
+    dims: [ 1, 1000 ]
+  }
+]
+version_policy: {
+  specific {
+    versions: [ 1 ]
+  }
+}

@@ -1,0 +1,20 @@
+name: "simple_triton_tf"
+platform: "tensorflow_graphdef"
+max_batch_size: 8
+input [
+  {
+    name: "input_1"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+output [
+  {
+    name: "add"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+version_policy: {
+  all { }
+}

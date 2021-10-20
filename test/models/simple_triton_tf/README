@@ -1,0 +1,2 @@
+Given an input tensor 'input_1' with size (batch x 10),
+outputs a tensor 'add' which equals to 'input_1' + 1.

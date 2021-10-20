@@ -1,0 +1,115 @@
+# Copyright (c) 2020-2021, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+%YAML 1.2
+name: inference
+components:
+- name: tx
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 25
+    policy: 0
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: tx
+    min_size: 1
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: rx
+    min_size: 1
+- name: rx
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 25
+    policy: 0
+- name: pool
+  type: nvidia::gxf::UnboundedAllocator
+- type: nvidia::isaac::TensorRtInference
+  parameters:
+    model_file_path: /tmp/model_file.onnx
+    engine_file_path: /tmp/trt_engine.plan
+    input_tensor_names:
+        - input
+    input_binding_names:
+        - data
+    output_tensor_names:
+        - output
+    output_binding_names:
+        - mobilenetv20_output_flatten0_reshape0
+    pool: pool
+    cuda_stream_pool: utils/stream
+    rx: [rx]
+    tx: tx
+    force_engine_update: true
+    verbose: true
+    clock: utils/clock
+---
+name: tx
+components:
+- name: tensor
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 25
+    policy: 0
+- name: allocator
+  type: nvidia::gxf::UnboundedAllocator
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: tensor
+    min_size: 1
+- type: nvidia::isaac_ros::RosBridgeTensorSubscriber
+  parameters:
+    signal: tensor
+    allocator: inference/pool
+    topic_name: tensor_pub
+    storage_type: 1
+    qos: 10
+    publish_release_delay_ms: 200
+---
+name: rx
+components:
+- name: tensor
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 25
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: tensor
+    min_size: 1
+- type: nvidia::isaac_ros::RosBridgeTensorPublisher
+  parameters:
+    signal: tensor
+    topic_name: tensor_sub
+    qos: 1000
+---
+name: connections
+components:
+- type: nvidia::gxf::Connection
+  parameters:
+    source: tx/tensor
+    target: inference/rx
+- type: nvidia::gxf::Connection
+  parameters:
+    source: inference/tx
+    target: rx/tensor
+---
+name: utils
+components:
+- name: clock
+  type: nvidia::gxf::RealtimeClock
+- type: nvidia::gxf::GreedyScheduler
+  parameters:
+    clock: clock
+- name: stream
+  type: nvidia::gxf::CudaStreamPool
+  parameters:
+    dev_id: 0
+    stream_flags: 0
+    stream_priority: 0
+    reserved_size: 1
+    max_size: 5
