@@ -13,7 +13,11 @@ The decision between TensorRT and Triton is ultimately up to user preference. Si
 
 The user configures either node to load a specified model or (in the case of the Triton SDK) model repository. The nodes expect as input a ROS2 TensorList message and publish the inference result as a ROS2 TensorList message. The definiton of the TensorList message (and the Tensor message contained within it) is specified under `isaac_ros_common/isaac_ros_nvengine_interfaces/msg`. Users are expected to run their own models, which they have trained (and converted to a compatible model format such as ONNX), or downloaded from NGC (in ETLT format), and converted to a TensorRT Engine File using the TAO converter tool. When running the TensorRT node, it is generally a better practice to first convert your custom model into a TensorRT Engine Plan file using the TAO converter before running inference. If an ONNX model is directly provided, the TensorRT node will convert it to a TensorRT Engine Plan file first before running inference, which will extend the initial setup time of the node.
 
-In addition to custom model support, this repository also includes native model support for U-Net and DOPE (Deep Object Pose Estimation). Both are provided as a separate ROS node that can accept an input image message and output a tensor message result. Included below are further walkthroughs and documentation on each native model and how to use them.
+Native model support is provided as a separate ROS packages with nodes that can accept an input image message and output a tensor message result. The following packages provide additional native model support with useful walkthroughs and documentation on how to use them.
+
+- [`isaac_ros_dope`](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_pose_estimation/tree/main/isaac_ros_dope): [Deep Object Pose Estimation (DOPE)](https://github.com/NVlabs/Deep_Object_Pose) for 3D object pose estimation
+- [`isaac_ros_unet`](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation/tree/main/isaac_ros_image_segmentation): [U-Net](https://github.com/NVlabs/Deep_Object_Pose) for semantic image segmentation
+
 
 Both nodes will require a `pre-processor` (`encoder`) and `post-processor` (`decoder`) node. A `pre-processor` node should take a ROS2 message, perform the pre-processing steps dictated by the model, and then convert it to a ROS2 TensorList message. For example, a `pre-processor` node could resize an image, normalize the image, and then perform the message conversion. On the other hand, a `post-processor` node should be used to convert the output of the model inference into a usable form. For example, a `post-processor` node may perform argmax to identify the class label from a classification problem. The specific functionality of these two nodes are application-specific.
 <br>
@@ -124,10 +128,10 @@ The following steps show how to download models, using [`PeopleSemSegnet`](https
 The pre-built `tao-converter` can be downloaded [here](https://developer.nvidia.com/tao-toolkit-get-started).    
 
    `tao-converter` is also included in the ISAAC-ROS docker container:  
-   | Platform       | Compute library                           | Directory inside docker                        |  
-   | -------------- | ------------------------------------------| -----------------------------------------------|   
-   | x86_64 | CUDA 11.3 / cuDNN 8.1 / TensorRT 8.0 | `/opt/nvidia/tao/cuda11.3-trt8.0`    |  
-   | Jetson(aarch64) | Library from Jetpack 4.6 | `/opt/nvidia/tao/jp4.6`              |  
+   | Platform        | Compute library                      | Directory inside docker           |
+   | --------------- | ------------------------------------ | --------------------------------- |
+   | x86_64          | CUDA 11.3 / cuDNN 8.1 / TensorRT 8.0 | `/opt/nvidia/tao/cuda11.3-trt8.0` |
+   | Jetson(aarch64) | Library from Jetpack 4.6             | `/opt/nvidia/tao/jp4.6`           |
 
    A symbolic link (`/opt/nvidia/tao/tao-converter`) is created to use `tao-converter` across different platforms.   
    **Tip**: Use `tao-converter -h` for more information on using the tool.  
@@ -156,7 +160,7 @@ Here are some examples for generating the TensorRT engine file using `tao-conver
    **Note**: The calibration cache file (specified using the `-c` option) is required to generate the int8 engine file. For the `PeopleSemSegNet` model, it is provided in the **File Browser** tab.
 
 ### Custom AI Models
-Custom user models or models re-trained through `TAO Toolkit` can be used with TensorRT and Triton DNN inference with additional configuration and encoder/decoder implementations. U-Net and DOPE models are natively supported, but other model architectures can also be supported with additional work. You can implement nodes that transform and pre-process data into a `TensorList` msg (some common encoders are provided in `isaac_ros_dnn_encoders`) and translate the predicted TensorLists back into semantic messages for your graph (for example, a decoder that produces bounding boxes or image masks). To configure a custom model, you will need to specify the input and output bindings of the expected tensors to TensorRT or Triton nodes through parameters.  
+Custom user models or models re-trained through `TAO Toolkit` can be used with TensorRT and Triton DNN inference with additional configuration and encoder/decoder implementations. U-Net models are natively supported, but other model architectures can also be supported with additional work. You can implement nodes that transform and pre-process data into a `TensorList` msg (some common encoders are provided in `isaac_ros_dnn_encoders`) and translate the predicted TensorLists back into semantic messages for your graph (for example, a decoder that produces bounding boxes or image masks). To configure a custom model, you will need to specify the input and output bindings of the expected tensors to TensorRT or Triton nodes through parameters.  
    
 ## Triton Inference
 ### Setup Triton Model Repository
@@ -320,61 +324,14 @@ messages, including the ability to resize and normalize the tensor before output
 #### Using `isaac_ros_dnn_encoders`
 This package is not meant to be a standalone package, but serves as a preprocessing step before sending data to
 `TensorRT` or `Triton`. Ensure that the preprocessing steps of your desired network match the preprocessing steps
-performed by this node. This node is capable of image color space conversion, image resizing and image normalization. To
-use this node, simply add it to a launch file for your pipeline. The `isaac_ros_unet` and `isaac_ros_dope` packages
-contain samples.
+performed by this node. This node is capable of image color space conversion, image resizing and image normalization. To use this node, simply add it to a launch file for your pipeline. The [`isaac_ros_unet`](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation/tree/main/isaac_ros_unet) package contains samples.
 
 #### Available Components
 | Component         | Topics Subscribed                                              | Topics Published                                                                                                                                                                                                           | Parameters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ----------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DnnImageEncoderNode` | `image`: The image that should be encoded into a tensor | `encoded_tensor`: The resultant tensor after converting the `image` <br> | `network_image_width`: The image width that the network expects. This will be used to resize the input `image` width. The default value is `224`. <br> `network_image_height`: The image height that the network expects. This will be used to resize the input `image` height. The default value is `224`. <br> `network_image_encoding`: The image encoding that the network expects. This will be used to convert the color space of the `image`. This should be either `rgb8` (default), `bgr8`, or `mono8`. <br>  `tensor_name`: The name of the input tensor, which is `input` by default. <br> `network_normalization_type`: The type of network normalization that should be performed on the network. This can be either `none` for no normalization, `unit_scaling` for normalization between 0 to 1, and `positive_negative` for normalization between -1 to 1. The default value is `unit_scaling`. |
+| `DnnImageEncoderNode` | `image`: The image that should be encoded into a tensor | `encoded_tensor`: The resultant tensor after converting the `image` <br> | `network_image_width`: The image width that the network expects. This will be used to resize the input `image` width. The default value is `224`. <br> `network_image_height`: The image height that the network expects. This will be used to resize the input `image` height. The default value is `224`. <br> `network_image_encoding`: The image encoding that the network expects. This will be used to convert the color space of the `image`. This should be either `rgb8` (default), `bgr8`, or `mono8`. <br> `maintain_aspect_ratio`: A flag for the encoder to crop the input image to get the aspect ratio of `network_image_width` and `network_image_height` before resizing. The default value is set to `False`. <br> `center_crop`: A flag for the encoder to crop the center of the image if `maintain_aspect_ratio` is set to `True`. The default value is set to `False`. <br>  `tensor_name`: The name of the input tensor, which is `input` by default. <br> `network_normalization_type`: The type of network normalization that should be performed on the network. This can be either `none` for no normalization, `unit_scaling` for normalization between 0 to 1, `positive_negative` for normalization between -1 to 1, and `image_normalization` for performing this normalization: <br>`(image / 255 - mean) / standard_deviation` <br> The default value is `unit_scaling`. <br> `image_mean`: If `network_normalization_type` is set to `image_normalization`, the mean of the images per channel will be used for this normalization process, which is `[0.5, 0.5, 0.5]` by default. <br> `image_stddev`: If `network_normalization_type` is set to `image_normalization`, the standard deviation of the images per channel will be used for this normalization process, which is `[0.5, 0.5, 0.5]` by default. |
 
 **Note:** For best results, crop/resize input images to the same dimensions your DNN model is expecting. `DnnImageEncoderNode` will skew the aspect ratio of input images to the target dimensions.
-
-### `isaac_ros_unet`
-#### Overview
-The `isaac_ros_unet` package offers functionality for generating raw and colored segmentation masks from images using a trained U-Net model. Either the `Triton Inference Server node` or `TensorRT node` can be used for inference.
-
-Currently, this package targets U-Net image segmentation models. A model used with this package should receive a `NCHW` formatted tensor input and output a `NHWC` tensor that has already been through an activation layer, such as a softmax layer.
-
-**Note**: `N` refers to the batch size, which must be 1, `H` refers to the height of the image, and `W` refers to the width of the image. For the input, `C` refers to the number of color channels in the image; for the output, `C` refers to the number of classes and should represent the confidence/probability of each class.
-
-The provided model is initialized for random class weights. To get a model, visit [NGC](https://ngc.nvidia.com/catalog/). We specifically recommend using [PeopleSemSegnet](https://ngc.nvidia.com/catalog/models/nvidia:tao:peoplesemsegnet). However, the package should work if you train your own U-Net model that performs semantic segmentation, with input and output formats similar to PeopleSemSegnet. This will need to be converted to a TensorRT plan file using the [TAO Toolkit](https://docs.nvidia.com/tao/tao-toolkit/text/tao_toolkit_quick_start_guide.html).
-
-Alternatively, you can supply any model file supported by the `Triton node` or `TensorRT node`.
-
-#### Package Dependencies
-- [isaac_ros_dnn_encoders](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_inference/tree/main/isaac_ros_dnn_encoders)
-- [isaac_ros_nvengine_interfaces](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common/tree/main/isaac_ros_nvengine_interfaces)
-- Inference Packages (can pick either one)
-  + [isaac_ros_tensor_rt](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_inference/tree/main/isaac_ros_tensor_rt)
-  + [isaac_ros_triton](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_inference/tree/main/isaac_ros_triton)
-
-#### Available Components
-| Component      | Topics Subscribed                                                  | Topics Published                                                       | Parameters                                                                                                                                                                                                               |
-| -------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `UNetDecoderNode` | `tensor_sub`: The tensor that represents the segmentation mask | `unet/raw_segmentation_mask`: The raw segmentation mask, encoded in mono8. Each pixel represents a class label. <br> `unet/colored_segmentation_mask`: The colored segmentation mask. The color palette is user specified. | `queue_size`: The length of the subscription queues, which is `rmw_qos_profile_default.depth` by default  <br> `frame_id`: The coordinate frame ID that the published image header should be set to <br> `tensor_output_order`: The order of the tensor that the node subscribes to. Note: Currently only `NHWC` formatted tensors are supported. <br>  `color_segmentation_mask_encoding`: The image encoding of the colored segmentation mask. This should be either `rgb8` or `bgr8` <br> `color_palette`: A vector of integers where each element represents the rgb color hex code for the corresponding class label. The number of elements should equal the number of classes. Additionally, element number N corresponds to class label N (e.g. element 0 corresponds to class label 0). For example, configure as `[0xFF0000, 0x76b900]` to color class 0 red and class 1 NVIDIA green respectively (other colors can be found [here](https://htmlcolorcodes.com/)). See launch files in `isaac_ros_unet/launch` for more examples. |
-
-### `isaac_ros_dope`
-#### Overview
-The `isaac_ros_dope` package offers functionality for detecting objects of a specific object type in images and estimating these objects' 6 DOF (degrees of freedom) poses using a trained DOPE (Deep Object Pose Estimation) model. Just like `isaac_ros_unet`, this package sets up pre-processing using the `DNN Image Encoder node`, inference on images by leveraging the `TensorRT node` and provides a decoder that converts the DOPE network's output into an array of 6 DOF poses.
-
-The model provided is taken from the official [DOPE Github repository](https://github.com/NVlabs/Deep_Object_Pose) published by NVIDIA Research. To get a model, visit the Pytorch DOPE model collection [here](https://drive.google.com/drive/folders/1DfoA3m_Bm0fW8tOWXGVxi4ETlLEAgmcg), and use the script under `isaac_ros_dope/scripts` to convert the Pytorch model to ONNX, which can be ingested by the TensorRT node. However, the package should also work if you train your own DOPE model that has an input image size of `[480, 640]`. For instructions to train your own DOPE model, check out the README in the official [DOPE Github repository](https://github.com/NVlabs/Deep_Object_Pose).
-
-#### Package Dependencies
-- [isaac_ros_dnn_encoders](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_inference/tree/main/isaac_ros_dnn_encoders)
-- [isaac_ros_nvengine_interfaces](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common/tree/main/isaac_ros_nvengine_interfaces)
-- Inference Packages (can pick either one)
-  + [isaac_ros_tensor_rt](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_inference/tree/main/isaac_ros_tensor_rt)
-  + [isaac_ros_triton](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_inference/tree/main/isaac_ros_triton)
-
-#### Available Components
-| Component         | Topics Subscribed                                              | Topics Published                                                                                                                                                                                                           | Parameters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ----------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DopeDecoderNode` | `belief_map_array`: The tensor that represents the belief maps, which are outputs from the DOPE network | `dope/pose_array`: An array of poses of the objects detected by the DOPE network and interpreted by the DOPE decoder node. | `queue_size`: The length of the subscription queues, which is `rmw_qos_profile_default.depth` by default <br>  `frame_id`: The frame ID that the DOPE decoder node will write to the header of its output messages <br>  `configuration_file`: The name of the configuration file to parse. Note: The node will look for that file name under `isaac_ros_dope/config`. By default there is a configuration file under that directory named `dope_config.yaml`. <br>  `object_name`: The object class the DOPE network is detecting and the DOPE decoder is interpreting. This name should be listed in the configuration file along with its corresponding cuboid dimensions. |
-
-#### Configuration
-You will need to specify an object type in the `DopeDecoderNode` that is listed in the `dope_config.yaml` file, so the DOPE decoder node will pick the right parameters to transform the belief maps from the inference node to object poses. The `dope_config.yaml` file uses the camera intrinsics of Realsense by default - if you are using a different camera, you will need to modify the `camera_matrix` field with the new, scaled (640x480) camera intrinsics.
 
 ## Walkthroughs
 ### Inference on PeopleSemSegnet using Triton
@@ -395,7 +352,13 @@ This walkthrough will run inference on the PeopleSemSegnet from NGC using `Trito
    ```
    **Note**: The TensorRT plan file should be named `model.plan`.
 
-3. Create file `/tmp/models/peoplesemsegnet/config.pbtxt` with the following content:
+3. Clone [Isaac ROS Image Segmentation](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation) repository into your workspace to make available the `isaac_ros_unet` package.
+   ```
+   cd /workspaces/isaac_ros-dev/src
+   git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation
+   ```
+
+4. Create file `/tmp/models/peoplesemsegnet/config.pbtxt` with the following content:
    ```
    name: "peoplesemsegnet"
    platform: "tensorrt_plan"
@@ -421,25 +384,25 @@ This walkthrough will run inference on the PeopleSemSegnet from NGC using `Trito
    }
    ```
 
-4. Modify the `isaac_ros_unet` launch file located in `/workspaces/isaac_ros-dev/src/isaac_ros_dnn_inference/isaac_ros_unet/launch/isaac_ros_unet_triton_launch.py`. You will need to update the following lines as:
+5. Modify the `isaac_ros_unet` launch file located in `/workspaces/isaac_ros-dev/src/isaac_ros_image_segmentation/isaac_ros_unet/launch/isaac_ros_unet_triton.launch.py`. You will need to update the following lines as:
    ```
    'model_name': 'peoplesemsegnet',
    'model_repository_paths': ['/tmp/models'],
    ```
    The rest of the parameters are already set for PeopleSemSegnet. If you are using a custom model, these parameters will also need to be modified.
 
-5. Rebuild and source `isaac_ros_unet`:
+6. Rebuild and source `isaac_ros_unet`:
    ```
    cd /workspaces/isaac_ros-dev
    colcon build --packages-up-to isaac_ros_unet && . install/setup.bash
    ```
 
-6. Start `isaac_ros_unet` using the launch file:
+7. Start `isaac_ros_unet` using the launch file:
    ```
-   ros2 launch isaac_ros_unet isaac_ros_unet_triton_launch.py
+   ros2 launch isaac_ros_unet isaac_ros_unet_triton.launch.py
    ```
 
-7. Setup `image_publisher` package if not already installed.
+8. Setup `image_publisher` package if not already installed.
    ```
    cd /workspaces/isaac_ros-dev/src 
    git clone --single-branch -b ros2 https://github.com/ros-perception/image_pipeline.git
@@ -447,85 +410,29 @@ This walkthrough will run inference on the PeopleSemSegnet from NGC using `Trito
    colcon build --packages-up-to image_publisher && . install/setup.bash
    ```
 
-8. In a separate terminal, publish an image to `/image` using `image_publisher`. For testing purposes, we recommend using PeopleSemSegnet sample image, which is located [here](https://developer.nvidia.com/sites/default/files/akamai/NGC_Images/models/peoplenet/input_11ft45deg_000070.jpg).
+9. In a separate terminal, publish an image to `/image` using `image_publisher`. For testing purposes, we recommend using PeopleSemSegnet sample image, which is located [here](https://developer.nvidia.com/sites/default/files/akamai/NGC_Images/models/peoplenet/input_11ft45deg_000070.jpg).
    ```   
-   ros2 run image_publisher image_publisher_node /workspaces/isaac_ros-dev/src/isaac_ros_dnn_inference/isaac_ros_unet/test/test_cases/unet_sample/image.jpg --ros-args -r image_raw:=image
+   ros2 run image_publisher image_publisher_node /workspaces/isaac_ros-dev/src/isaac_ros_image_segmentation/isaac_ros_unet/test/test_cases/unet_sample/image.jpg --ros-args -r image_raw:=image
    ```
 
     <div align="center"><img src="isaac_ros_unet/test/test_cases/unet_sample/image.jpg" width="600px"/></div>
 
-9. In another terminal, launch `rqt_image_viewer` as follows:
+10. In another terminal, launch `rqt_image_viewer` as follows:
    ```
    ros2 run rqt_image_view rqt_image_view
    ```
 
-10. Inside the `rqt_image_view` GUI, change the topic to `/unet/colored_segmentation_mask` to view a colorized segmentation mask. You may also view the raw segmentation, which is published to `/unet/raw_segmentation_mask`, where the raw pixels correspond to the class labels making it unsuitable for human visual inspection.
+11. Inside the `rqt_image_view` GUI, change the topic to `/unet/colored_segmentation_mask` to view a colorized segmentation mask. You may also view the raw segmentation, which is published to `/unet/raw_segmentation_mask`, where the raw pixels correspond to the class labels making it unsuitable for human visual inspection.
 
     <div align="center"><img src="resources/peoplesemsegnet_segimage.png" width="600px"/></div>
 
-These steps can easily be adapted to using TensorRT by referring to the TensorRT inference section and modifying step 3-4.
+These steps can easily be adapted to using TensorRT by referring to the TensorRT inference section and modifying step 4-5.
 
 **Note:** For best results, crop/resize input images to the same dimensions your DNN model is expecting.
 
-If you are interested in using a custom model of the U-Net architecture, please read the analogous steps for configuring DOPE.  
+If you are interested in using a custom model of the U-Net architecture, please read the analogous steps for configuring [DOPE](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_pose_estimation/tree/main/isaac_ros_dope).
+  
 To configure the launch file for your specific model, consult earlier documentation that describes each of these parameters. Once again, remember to verify that the preprocessing and postprocessing supported by the nodes fit your models. For example, the model should expect a `NCHW` formatted tensor, and output a `NHWC` tensor that has gone through a activation layer (e.g. softmax).
-
-### Inference on DOPE using TensorRT
-1. Select a DOPE model by visiting the DOPE model collection available on the official [DOPE GitHub](https://github.com/NVlabs/Deep_Object_Pose) repository [here](https://drive.google.com/open?id=1DfoA3m_Bm0fW8tOWXGVxi4ETlLEAgmcg). For example, download `Ketchup.pth` into `/tmp/models`.
-
-2. In order to run PyTorch models with TensorRT, one option is to export the model into an ONNX file using the script provided under `/workspaces/isaac_ros-dev/src/isaac_ros_dnn_inference/isaac_ros_dope/scripts/dope_pytorch2onnx.py`:
-   ```
-   python3 /workspaces/isaac_ros-dev/src/isaac_ros_dnn_inference/isaac_ros_dope/scripts/dope_pytorch2onnx.py --input /tmp/models/Ketchup.pth
-   ```
-   The output ONNX file will be located at `/tmp/models/Ketchup.onnx`.
-
-   **Note**: The DOPE decoder currently works with the output of a DOPE network that has a fixed input size of 640 x 480, which are the default dimensions set in the script. In order to use input images of other sizes, make sure to crop/resize using ROS2 nodes from [Isaac ROS Image Pipeline](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline) or similar packages.
-
-3. Modify the following values in the launch file `/workspaces/isaac_ros-dev/src/isaac_ros_dnn_inference/isaac_ros_dope/launch/isaac_ros_dope.launch.py`:
-   ```
-   'model_file_path': '/tmp/models/Ketchup.onnx'
-   'object_name': 'Ketchup'
-   ```
-   **Note**: Modify parameters `object_name` and `model_file_path` in the launch file if you are using another model.`object_name` should correspond to one of the objects listed in the DOPE configuration file, and the specified model should be a DOPE model that is trained for that specific object.
-
-4. Rebuild and source `isaac_ros_dope`:
-   ```
-   cd /workspaces/isaac_ros-dev
-   colcon build --packages-up-to isaac_ros_dope && . install/setup.bash
-   ```
-
-5. Start `isaac_ros_dope` using the launch file:
-   ```
-   ros2 launch /workspaces/isaac_ros-dev/src/isaac_ros_dnn_inference/isaac_ros_dope/launch/isaac_ros_dope.launch.py
-   ```
-
-6. Setup `image_publisher` package if not already installed.
-   ```
-   cd /workspaces/isaac_ros-dev/src 
-   git clone --single-branch -b ros2 https://github.com/ros-perception/image_pipeline.git
-   cd /workspaces/isaac_ros-dev
-   colcon build --packages-up-to image_publisher && . install/setup.bash
-   ```
-
-7. Start publishing images to topic `/image` using `image_publisher`, the topic that the encoder is subscribed to.
-   ```   
-   ros2 run image_publisher image_publisher_node /workspaces/isaac_ros-dev/src/isaac_ros_dnn_inference/resources/0002_rgb.jpg --ros-args -r image_raw:=image
-   ```
-
-   <div align="center"><img src="resources/0002_rgb.jpg" width="600px"/></div>
-
-8. Open another terminal window. You should be able to get the poses of the objects in the images through `ros2 topic echo`:
-   ```
-   source /workspaces/isaac_ros-dev/install/setup.bash
-   ros2 topic echo /poses
-   ```
-   We are echoing the topic `/poses` because we remapped the original topic name `/dope/pose_array` to `/poses` in our launch file.
-
-9. Launch `rviz2`. Click on `Add` button, select "By topic", and choose `PoseArray` under `/poses`. Update "Displays" parameters as shown in the following to see the axes of the object displayed.
-
-   <div align="center"><img src="resources/dope_rviz2.png" width="600px"/></div>
-
-**Note:** For best results, crop/resize input images to the same dimensions your DNN model is expecting.
 
 ## Troubleshooting
 ### Nodes crashed on initial launch reporting shared libraries have a file format not recognized
@@ -545,6 +452,7 @@ Run `git lfs pull` in each Isaac ROS repository you have checked out, especially
 
 # Updates
 
-| Date | Changes |
-| -----| ------- |
-| 2021-10-20 | Initial release  |
+| Date       | Changes                                          |
+| ---------- | ------------------------------------------------ |
+| 2021-11-03 | Split DOPE and U-Net into separate repositories. |
+| 2021-10-20 | Initial release                                  |
