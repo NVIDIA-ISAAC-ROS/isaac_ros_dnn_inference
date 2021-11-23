@@ -13,6 +13,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "image_transport/image_transport.hpp"
 #include "isaac_ros_nvengine_interfaces/msg/tensor_list.hpp"
@@ -44,6 +45,10 @@ private:
   const int network_image_width_;
   const int network_image_height_;
   const std::string network_image_encoding_;
+  const bool maintain_aspect_ratio_;
+  const bool center_crop_;
+  const std::vector<double> image_mean_;
+  const std::vector<double> image_stddev_;
 
   // Name of the published Tensor message
   const std::string tensor_name_;

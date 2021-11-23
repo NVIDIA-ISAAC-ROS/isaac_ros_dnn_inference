@@ -68,7 +68,6 @@ components:
     topic_name: tensor_pub
     storage_type: 1
     qos: 10
-    publish_release_delay_ms: 200
 ---
 name: rx
 components:
