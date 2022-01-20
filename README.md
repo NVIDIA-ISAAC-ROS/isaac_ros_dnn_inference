@@ -16,7 +16,7 @@ The user configures either node to load a specified model or (in the case of the
 Native model support is provided as a separate ROS packages with nodes that can accept an input image message and output a tensor message result. The following packages provide additional native model support with useful walkthroughs and documentation on how to use them.
 
 - [`isaac_ros_dope`](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_pose_estimation/tree/main/isaac_ros_dope): [Deep Object Pose Estimation (DOPE)](https://github.com/NVlabs/Deep_Object_Pose) for 3D object pose estimation
-- [`isaac_ros_unet`](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation/tree/main/isaac_ros_image_segmentation): [U-Net](https://github.com/NVlabs/Deep_Object_Pose) for semantic image segmentation
+- [`isaac_ros_unet`](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation/tree/main/isaac_ros_unet): [U-Net](https://github.com/NVlabs/Deep_Object_Pose) for semantic image segmentation
 
 
 Both nodes will require a `pre-processor` (`encoder`) and `post-processor` (`decoder`) node. A `pre-processor` node should take a ROS2 message, perform the pre-processing steps dictated by the model, and then convert it to a ROS2 TensorList message. For example, a `pre-processor` node could resize an image, normalize the image, and then perform the message conversion. On the other hand, a `post-processor` node should be used to convert the output of the model inference into a usable form. For example, a `post-processor` node may perform argmax to identify the class label from a classification problem. The specific functionality of these two nodes are application-specific.
