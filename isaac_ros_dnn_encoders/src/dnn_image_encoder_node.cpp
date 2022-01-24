@@ -29,11 +29,22 @@ enum NormalizationTypes
   kImageNormalization
 };
 
+enum TensorLayouts
+{
+  NCHW,
+  NHWC
+};
+
 const std::unordered_map<std::string, int32_t> g_str_to_normalization_type({
     {"none", NormalizationTypes::kNone},
     {"unit_scaling", NormalizationTypes::kUnitScaling},
     {"positive_negative", NormalizationTypes::kPositiveNegative},
     {"image_normalization", NormalizationTypes::kImageNormalization}}
+);
+
+const std::unordered_map<std::string, int32_t> g_str_to_tensor_layout({
+    {"nchw", TensorLayouts::NCHW},
+    {"nhwc", TensorLayouts::NHWC}}
 );
 
 const std::unordered_map<std::string, std::string> g_str_to_image_encoding({
@@ -57,6 +68,7 @@ struct DnnImageEncoderNode::DnnImageEncoderImpl
   std::string image_encoding_;
   std::string normalization_type_;
   std::string tensor_name_;
+  std::string tensor_layout_;
   bool maintain_aspect_ratio_;
   bool center_crop_;
   std::vector<double> image_mean_;
@@ -70,6 +82,7 @@ struct DnnImageEncoderNode::DnnImageEncoderImpl
     image_encoding_ = node->network_image_encoding_;
     normalization_type_ = node->network_normalization_type_;
     tensor_name_ = node->tensor_name_;
+    tensor_layout_ = node->tensor_layout_;
     maintain_aspect_ratio_ = node->maintain_aspect_ratio_;
     center_crop_ = node->center_crop_;
     image_mean_ = node->image_mean_;
@@ -142,8 +155,21 @@ struct DnnImageEncoderNode::DnnImageEncoderImpl
         image_resized.convertTo(image_resized, CV_32F);
     }
 
-    // Convert to NCHW
-    cv::Mat cv_tensor = cv::dnn::blobFromImage(image_resized);
+    // Convert tensor layout to the tensor_layout specified by the parameters
+    cv::Mat cv_tensor;
+    switch (g_str_to_tensor_layout.at(tensor_layout_)) {
+      case TensorLayouts::NHWC:
+      {
+        int sz[] = {1, image_resized.rows, image_resized.cols, image_resized.channels()};
+        cv_tensor = cv::Mat(4, sz, CV_32F, image_resized.data);
+        break;
+      }
+      // Default to NCHW
+      default:
+        cv_tensor = cv::dnn::blobFromImage(image_resized);
+    }
+
+    
 
     // Convert CV matrix to ROS2 tensor message
     auto tensor_list_msg = isaac_ros_nvengine_interfaces::msg::TensorList();
@@ -186,6 +212,7 @@ DnnImageEncoderNode::DnnImageEncoderNode(const rclcpp::NodeOptions options)
   image_mean_(declare_parameter<std::vector<double>>("image_mean", {0.5, 0.5, 0.5})),
   image_stddev_(declare_parameter<std::vector<double>>("image_stddev", {0.5, 0.5, 0.5})),
   tensor_name_(declare_parameter<std::string>("tensor_name", "input")),
+  tensor_layout_(declare_parameter<std::string>("tensor_layout", "nchw")),
   network_normalization_type_(declare_parameter<std::string>(
       "network_normalization_type", "unit_scaling")),
   // Subscriber
@@ -201,6 +228,11 @@ DnnImageEncoderNode::DnnImageEncoderNode(const rclcpp::NodeOptions options)
   // Impl initialization
   impl_(std::make_unique<DnnImageEncoderImpl>())
 {
+  if (g_str_to_tensor_layout.find(tensor_layout_) == g_str_to_tensor_layout.end()) {
+    throw std::runtime_error(
+            "Error: received unsupported tensor layout: " + tensor_layout_);
+  }
+
   if (g_str_to_image_encoding.find(network_image_encoding_) == g_str_to_image_encoding.end()) {
     throw std::runtime_error(
             "Error: received unsupported network image encoding: " + network_image_encoding_);
