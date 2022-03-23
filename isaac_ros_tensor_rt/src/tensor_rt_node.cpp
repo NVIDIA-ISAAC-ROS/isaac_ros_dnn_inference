@@ -33,7 +33,7 @@ const char * dnn_inference_extensions[] = {
 constexpr uint32_t extensions_length = 5;
 constexpr char package_name[] = "isaac_ros_tensor_rt";
 constexpr char group_name[] = "inference";
-constexpr char codelet_type[] = "nvidia::isaac::TensorRtInference";
+constexpr char codelet_type[] = "nvidia::gxf::TensorRtInference";
 constexpr int64_t default_max_workspace_size = 67108864l;
 constexpr int64_t default_dla_core = -1;
 
