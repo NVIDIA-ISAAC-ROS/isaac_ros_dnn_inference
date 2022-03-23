@@ -27,19 +27,22 @@ This has been tested on ROS2 (Foxy) and should build and run on x86_64 and aarch
 
 For more documentation on TensorRT, see [here](https://developer.nvidia.com/tensorrt). Note that the TensorRT node integrates the TensorRT API directly, so there is no need to make any calls or direct usage of TensorRT SDK.
 
-For more documentation on Triton, see [here](https://github.com/triton-inference-server/server).
+For more documentation on Triton, see [here](https://github.com/triton-inference-server/server). 
+
+For solutions to known issues, please visit the [Troubleshooting](#troubleshooting) section below.
 
 ## System Requirements
 This Isaac ROS package is designed and tested to be compatible with ROS2 Foxy on Jetson hardware, in addition to on x86 systems with an Nvidia GPU. On x86 systems, packages are only supported when run in the provided Isaac ROS Dev Docker container.
 
 ### Jetson
-- AGX Xavier or Xavier NX
-- JetPack 4.6
+- [Jetson AGX Xavier or Xavier NX](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/)
+- [JetPack 4.6.1](https://developer.nvidia.com/embedded/jetpack)
 
 ### x86_64 (in Isaac ROS Dev Docker Container)
-- CUDA 11.1+ supported discrete GPU
-- VPI 1.1.11
 - Ubuntu 20.04+
+- CUDA 11.4 supported discrete GPU
+- VPI 1.1.11
+
 
 **Note:** For best performance on Jetson, ensure that power settings are configured appropriately ([Power Management for Jetson](https://docs.nvidia.com/jetson/l4t/index.html#page/Tegra%20Linux%20Driver%20Package%20Development%20Guide/power_management_jetson_xavier.html#wwpID0EUHA)).
 

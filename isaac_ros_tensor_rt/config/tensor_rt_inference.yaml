@@ -28,7 +28,7 @@ components:
     policy: 0
 - name: pool
   type: nvidia::gxf::UnboundedAllocator
-- type: nvidia::isaac::TensorRtInference
+- type: nvidia::gxf::TensorRtInference
   parameters:
     model_file_path: /tmp/model_file.onnx
     engine_file_path: /tmp/trt_engine.plan
