@@ -53,6 +53,9 @@ private:
   // Name of the published Tensor message
   const std::string tensor_name_;
 
+  // The layout of the tensor (i.e. NCHW or NHWC)
+  const std::string tensor_layout_;
+
   // Method to normalize image. Supported types are "unit_scaling" (range is [0, 1]),
   // and "positive_negative" (range is [-1, 1]) and "none" for no normalization
   const std::string network_normalization_type_;
