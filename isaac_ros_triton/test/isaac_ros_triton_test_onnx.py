@@ -1,4 +1,4 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -9,10 +9,12 @@
 import os
 import time
 
-from isaac_ros_nvengine_interfaces.msg import Tensor, TensorList, TensorShape
+from isaac_ros_tensor_list_interfaces.msg import Tensor, TensorList, TensorShape
 from isaac_ros_test import IsaacROSBaseTest
+import launch
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
+import launch_testing
 
 import pytest
 import rclpy
@@ -29,7 +31,7 @@ def generate_test_description():
         package='isaac_ros_triton',
         name='triton',
         namespace=IsaacROSTritonNodeTest.generate_namespace(),
-        plugin='isaac_ros::dnn_inference::TritonNode',
+        plugin='nvidia::isaac_ros::dnn_inference::TritonNode',
         parameters=[{
             'model_name': 'mobilenetv2-1.0_triton_onnx',
             'model_repository_paths': [model_dir],
@@ -48,8 +50,11 @@ def generate_test_description():
             executable='component_container',
             composable_node_descriptions=[triton_node],
             namespace='triton',
-            output='screen'
-        )
+            output='screen',
+            arguments=['--ros-args', '--log-level', 'info'],
+        ),
+        launch.actions.TimerAction(
+            period=5.0, actions=[launch_testing.actions.ReadyToTest()])
     ])
 
 

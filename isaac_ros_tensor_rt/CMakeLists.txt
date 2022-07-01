@@ -1,4 +1,4 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -6,7 +6,7 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.8)
 project(isaac_ros_tensor_rt LANGUAGES C CXX)
 
 # Default to C++17
@@ -38,8 +38,8 @@ target_compile_definitions(tensor_rt_node
   PRIVATE "COMPOSITION_BUILDING_DLL"
 )
 target_link_libraries(tensor_rt_node)
-rclcpp_components_register_nodes(tensor_rt_node "isaac_ros::dnn_inference::TensorRTNode")
-set(node_plugins "${node_plugins}isaac_ros::dnn_inference::TensorRTNode;$<TARGET_FILE:tensor_rt_node>\n")
+rclcpp_components_register_nodes(tensor_rt_node "nvidia::isaac_ros::dnn_inference::TensorRTNode")
+set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TensorRTNode;$<TARGET_FILE:tensor_rt_node>\n")
 
 # Install config directory
 install(
@@ -60,4 +60,4 @@ if(BUILD_TESTING)
 
 endif()
 
-ament_auto_package()
+ament_auto_package(INSTALL_TO_SHARE launch)

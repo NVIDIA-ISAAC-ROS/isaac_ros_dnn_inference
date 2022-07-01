@@ -1,4 +1,4 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -8,12 +8,11 @@
 
 import os
 import pathlib
-import struct
 import time
 
 import cv2
 from cv_bridge import CvBridge
-from isaac_ros_nvengine_interfaces.msg import TensorList
+from isaac_ros_tensor_list_interfaces.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest, JSONConversion
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
@@ -29,14 +28,11 @@ def generate_test_description():
     encoder_node = ComposableNode(
         name='encoder',
         package='isaac_ros_dnn_encoders',
-        plugin='isaac_ros::dnn_inference::DnnImageEncoderNode',
+        plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
         namespace=IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
         parameters=[{
             'network_image_width': 512,
-            'network_image_height': 512,
-            'network_image_encoding': 'rgb8',
-            'network_normalization_type': 'none',
-            'maintain_aspect_ratio': True
+            'network_image_height': 512
         }],
         remappings=[('encoded_tensor', 'tensors')])
 
@@ -44,10 +40,12 @@ def generate_test_description():
         ComposableNodeContainer(
             name='tensor_rt_container',
             package='rclcpp_components',
-            executable='component_container',
+            executable='component_container_mt',
             composable_node_descriptions=[encoder_node],
             namespace=IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
-            output='screen'
+            output='screen',
+            arguments=['--ros-args', '--log-level', 'info',
+                       '--log-level', 'isaac_ros_test.encoder:=debug'],
         )
     ])
 
@@ -97,10 +95,12 @@ class IsaacROSDnnImageEncoderNodeTest(IsaacROSBaseTest):
             cv_image = cv2.resize(cv_image, (512, 512))
             cv_image = cv2.dnn.blobFromImage(cv_image)
 
-            flattened_cv_image = cv_image.flatten()
-            for i in range(0, len(flattened_cv_image)):
-                result_val = struct.unpack('<f', tensor.data[4*i:4*i+4])
-                self.assertTrue(flattened_cv_image[i] == result_val)
+            # Checking the number of dims in tensor. It should be 3 for the input image(RGB)
+            self.assertTrue(tensor.shape.rank == 4)
+            # Checking the height of resized tensor
+            self.assertTrue(tensor.shape.dims[2] == 512)
+            # Checking the width of resized tensor
+            self.assertTrue(tensor.shape.dims[3] == 512)
 
         finally:
             self.node.destroy_subscription(subs)

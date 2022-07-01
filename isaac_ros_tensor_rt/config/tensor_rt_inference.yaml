@@ -1,17 +1,18 @@
-# Copyright (c) 2020-2021, NVIDIA CORPORATION.  All rights reserved.
+%YAML 1.2
+# Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
 # and any modifications thereto.  Any use, reproduction, disclosure or
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
-%YAML 1.2
+---
 name: inference
 components:
 - name: tx
   type: nvidia::gxf::DoubleBufferTransmitter
   parameters:
-    capacity: 25
+    capacity: 12
     policy: 0
 - type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
   parameters:
@@ -24,7 +25,7 @@ components:
 - name: rx
   type: nvidia::gxf::DoubleBufferReceiver
   parameters:
-    capacity: 25
+    capacity: 12
     policy: 0
 - name: pool
   type: nvidia::gxf::UnboundedAllocator
@@ -42,60 +43,37 @@ components:
         - mobilenetv20_output_flatten0_reshape0
     pool: pool
     cuda_stream_pool: utils/stream
+    dummy_rx: rx
     rx: [rx]
     tx: tx
     force_engine_update: true
     verbose: true
     clock: utils/clock
 ---
-name: tx
+name: vault
 components:
-- name: tensor
-  type: nvidia::gxf::DoubleBufferTransmitter
-  parameters:
-    capacity: 25
-    policy: 0
-- name: allocator
-  type: nvidia::gxf::UnboundedAllocator
-- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
-  parameters:
-    transmitter: tensor
-    min_size: 1
-- type: nvidia::isaac_ros::RosBridgeTensorSubscriber
-  parameters:
-    signal: tensor
-    allocator: inference/pool
-    topic_name: tensor_pub
-    storage_type: 1
-    qos: 10
----
-name: rx
-components:
-- name: tensor
+- name: signal
   type: nvidia::gxf::DoubleBufferReceiver
   parameters:
-    capacity: 25
+    capacity: 1
     policy: 0
 - type: nvidia::gxf::MessageAvailableSchedulingTerm
   parameters:
-    receiver: tensor
+    receiver: signal
     min_size: 1
-- type: nvidia::isaac_ros::RosBridgeTensorPublisher
+- name: vault
+  type: nvidia::gxf::Vault
   parameters:
-    signal: tensor
-    topic_name: tensor_sub
-    qos: 1000
+    source: signal
+    max_waiting_count: 1
+    drop_waiting: false
 ---
 name: connections
 components:
 - type: nvidia::gxf::Connection
   parameters:
-    source: tx/tensor
-    target: inference/rx
-- type: nvidia::gxf::Connection
-  parameters:
     source: inference/tx
-    target: rx/tensor
+    target: vault/signal
 ---
 name: utils
 components:
@@ -104,6 +82,7 @@ components:
 - type: nvidia::gxf::GreedyScheduler
   parameters:
     clock: clock
+    stop_on_deadlock: false
 - name: stream
   type: nvidia::gxf::CudaStreamPool
   parameters:
