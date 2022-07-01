@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -23,7 +23,8 @@ int main(int argc, char * argv[])
 
   rclcpp::NodeOptions node_options;
 
-  auto pub_node = std::make_shared<isaac_ros::dnn_inference::TestTensorPublisherNode>(node_options);
+  auto pub_node = std::make_shared<nvidia::isaac_ros::dnn_inference::TestTensorPublisherNode>(
+    node_options);
 
   exec.add_node(pub_node);
 

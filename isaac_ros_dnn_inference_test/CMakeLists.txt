@@ -1,4 +1,4 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -38,8 +38,8 @@ target_compile_definitions(test_tensor_publisher_node
   PRIVATE "COMPOSITION_BUILDING_DLL"
 )
 target_link_libraries(test_tensor_publisher_node)
-rclcpp_components_register_nodes(test_tensor_publisher_node "isaac_ros::dnn_inference::TestTensorPublisherNode")
-set(node_plugins "${node_plugins}isaac_ros::dnn_inference::TestTensorPublisherNode;$<TARGET_FILE:test_tensor_publisher_node>\n")
+rclcpp_components_register_nodes(test_tensor_publisher_node "nvidia::isaac_ros::dnn_inference::TestTensorPublisherNode")
+set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TestTensorPublisherNode;$<TARGET_FILE:test_tensor_publisher_node>\n")
 
 # run test tensor publisher executable
 ament_auto_add_executable("run_test_publisher"

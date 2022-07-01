@@ -1,4 +1,4 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -10,10 +10,12 @@ import errno
 import os
 import time
 
-from isaac_ros_nvengine_interfaces.msg import Tensor, TensorList, TensorShape
+from isaac_ros_tensor_list_interfaces.msg import Tensor, TensorList, TensorShape
 from isaac_ros_test import IsaacROSBaseTest
+import launch
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
+import launch_testing
 
 import pytest
 import rclpy
@@ -37,10 +39,8 @@ def generate_test_description():
     tensor_rt_node = ComposableNode(
         name='tensor_rt',
         package='isaac_ros_tensor_rt',
-        plugin='isaac_ros::dnn_inference::TensorRTNode',
+        plugin='nvidia::isaac_ros::dnn_inference::TensorRTNode',
         namespace=IsaacROSTensorRTNodeTest.generate_namespace(),
-        remappings=[('tensor_pub', 'tensor_pub'),
-                    ('tensor_sub', 'tensor_sub')],
         parameters=[{
             'model_file_path': model_file_path,
             'output_binding_names': ['mobilenetv20_output_flatten0_reshape0'],
@@ -58,8 +58,11 @@ def generate_test_description():
             executable='component_container',
             composable_node_descriptions=[tensor_rt_node],
             namespace=IsaacROSTensorRTNodeTest.generate_namespace(),
-            output='screen'
-        )
+            output='screen',
+            arguments=['--ros-args', '--log-level', 'info'],
+        ),
+        launch.actions.TimerAction(
+            period=5.0, actions=[launch_testing.actions.ReadyToTest()])
     ])
 
 

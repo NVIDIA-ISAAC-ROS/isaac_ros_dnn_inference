@@ -1,4 +1,4 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -13,7 +13,7 @@ import struct
 import time
 
 from cv_bridge import CvBridge
-from isaac_ros_nvengine_interfaces.msg import TensorList
+from isaac_ros_tensor_list_interfaces.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
@@ -25,8 +25,8 @@ import rclpy
 from sensor_msgs.msg import Image
 
 
-DIMENSION_WIDTH = 500
-DIMENSION_HEIGHT = 500
+DIMENSION_WIDTH = 100
+DIMENSION_HEIGHT = 100
 
 
 @pytest.mark.rostest
@@ -34,13 +34,11 @@ def generate_test_description():
     encoder_node = ComposableNode(
         name='encoder',
         package='isaac_ros_dnn_encoders',
-        plugin='isaac_ros::dnn_inference::DnnImageEncoderNode',
+        plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
         namespace=IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace(),
         parameters=[{
             'network_image_width': DIMENSION_WIDTH,
             'network_image_height': DIMENSION_HEIGHT,
-            'network_image_encoding': 'rgb8',
-            'network_normalization_type': 'image_normalization',
             'image_mean': [0.5, 0.6, 0.25],
             'image_stddev': [0.25, 0.8, 0.5]
         }],
@@ -50,10 +48,12 @@ def generate_test_description():
         ComposableNodeContainer(
             name='tensor_rt_container',
             package='rclcpp_components',
-            executable='component_container',
+            executable='component_container_mt',
             composable_node_descriptions=[encoder_node],
             namespace=IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace(),
-            output='screen'
+            output='screen',
+            arguments=['--ros-args', '--log-level', 'info',
+                       '--log-level', 'isaac_ros_test.encoder:=debug'],
         )
     ])
 
@@ -92,10 +92,10 @@ class IsaacROSDnnImageEncoderImageNormNodeTest(IsaacROSBaseTest):
 
         try:
             # Create white image
-            cv_image = np.zeros((500, 500, 3), np.uint8)
+            cv_image = np.zeros((DIMENSION_HEIGHT, DIMENSION_WIDTH, 3), np.uint8)
             cv_image[:] = (255, 255, 255)
             image = CvBridge().cv2_to_imgmsg(cv_image)
-            image.encoding = 'rgb8'
+            image.encoding = 'bgr8'
 
             end_time = time.time() + TIMEOUT
             done = False
@@ -114,16 +114,17 @@ class IsaacROSDnnImageEncoderImageNormNodeTest(IsaacROSBaseTest):
             # raw bytes - the tensor values are floats, which are 4 bytes.
             VALUES_PER_CHANNEL = DIMENSION_HEIGHT * DIMENSION_WIDTH
             SIZEOF_FLOAT = 4
+
             for i in range(0, floor(len(tensor.data) / SIZEOF_FLOAT)):
                 # struct.unpack returns a tuple with one element
                 result_val = struct.unpack(
                     '<f', tensor.data[SIZEOF_FLOAT * i: SIZEOF_FLOAT * i + SIZEOF_FLOAT])[0]
                 if i // VALUES_PER_CHANNEL == 0:  # Red
-                    self.assertTrue(result_val == RED_EXPECTED_VAL)
+                    self.assertTrue(round(result_val, 1) == RED_EXPECTED_VAL)
                 elif i // VALUES_PER_CHANNEL == 1:  # Green
-                    self.assertTrue(result_val == GREEN_EXPECTED_VAL)
+                    self.assertTrue(round(result_val, 1) == GREEN_EXPECTED_VAL)
                 else:  # Blue
-                    self.assertTrue(result_val == BLUE_EXPECTED_VAL)
+                    self.assertTrue(round(result_val, 1) == BLUE_EXPECTED_VAL)
 
         finally:
             self.node.destroy_subscription(subs)

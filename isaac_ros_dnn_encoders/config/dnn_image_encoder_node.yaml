@@ -1,0 +1,378 @@
+%YAML 1.2
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+---
+name: global
+components:
+- name: adapter_video_buffer
+  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  parameters:
+    message_type: "VideoBuffer"
+- name: adapter_bgr_u8
+  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  parameters:
+    message_type: "Tensor"
+    image_type: "BGR_U8"
+- name: adapter_rgb_u8
+  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  parameters:
+    message_type: "Tensor"
+    image_type: "RGB_U8"
+- name: adapter_bgr_f32
+  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  parameters:
+    message_type: "Tensor"
+    image_type: "BGR_F32"
+- name: adapter_rgb_f32
+  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  parameters:
+    message_type: "Tensor"
+    image_type: "RGB_F32"
+- name: adapter_planar_bgr_f32
+  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  parameters:
+    message_type: "Tensor"
+    image_type: "PLANAR_BGR_F32"
+- name: adapter_planar_rgb_f32
+  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  parameters:
+    message_type: "Tensor"
+    image_type: "PLANAR_RGB_F32"
+---
+name: broadcaster
+components:
+- type: nvidia::gxf::Broadcast
+  parameters:
+    source: data_receiver
+- name: data_receiver
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 1
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver
+    min_size: 1
+- name: data_transmitter_resizer
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 1
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter_resizer
+    min_size: 1
+- name: data_transmitter_compositor
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 1
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter_compositor
+    min_size: 1
+---
+name: resizer
+components:
+- name: data_receiver
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver
+    min_size: 1
+- name: data_transmitter
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 12
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter
+    min_size: 1
+- name: allocator
+  type: nvidia::gxf::BlockMemoryPool
+  parameters:
+    storage_type: 1
+    block_size: 1566720
+    num_blocks: 40
+- name: resize_operator
+  type: nvidia::cvcore::tensor_ops::Resize
+  parameters:
+    output_width: 0
+    output_height: 0
+    interp_type: "linear"
+    border_type: "zero"
+    keep_aspect_ratio: false
+    receiver: data_receiver
+    transmitter: data_transmitter
+    pool: allocator
+    input_adapter: global/adapter_video_buffer
+    output_adapter: global/adapter_video_buffer
+    output_name: "image"
+---
+name: color_space_converter
+components:
+- name: data_receiver
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver
+    min_size: 1
+- name: data_transmitter
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 12
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter
+    min_size: 1
+- name: allocator
+  type: nvidia::gxf::BlockMemoryPool
+  parameters:
+    storage_type: 1
+    block_size: 1566720
+    num_blocks: 40
+- name: color_converter_operator
+  type: nvidia::cvcore::tensor_ops::ConvertColorFormat
+  parameters:
+    output_type: "RGB_U8"
+    receiver: data_receiver
+    transmitter: data_transmitter
+    pool: allocator
+    input_adapter: global/adapter_video_buffer
+    output_adapter: global/adapter_video_buffer
+    output_name: "image"
+---
+name: normalizer
+components:
+- name: data_receiver
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver
+    min_size: 1
+- name: data_transmitter
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 12
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter
+    min_size: 1
+- name: allocator
+  type: nvidia::gxf::BlockMemoryPool
+  parameters:
+    storage_type: 1
+    block_size: 6266880
+    num_blocks: 40
+- name: normalizer_operator
+  type: nvidia::cvcore::tensor_ops::Normalize
+  parameters:
+    scales: [ 0.0156862745, 0.00490196078, 0.00784313725 ]
+    offsets: [ -127.5, -153.0, -63.75 ]
+    receiver: data_receiver
+    transmitter: data_transmitter
+    pool: allocator
+    input_adapter: global/adapter_video_buffer
+    output_adapter: global/adapter_rgb_f32
+    output_name: "image"
+---
+name: interleaved_to_planar
+components:
+- name: data_receiver
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver
+    min_size: 1
+- name: data_transmitter
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 12
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter
+    min_size: 1
+- name: allocator
+  type: nvidia::gxf::BlockMemoryPool
+  parameters:
+    storage_type: 1
+    block_size: 6266880
+    num_blocks: 40
+- name: interleaved_to_planar_operator
+  type: nvidia::cvcore::tensor_ops::InterleavedToPlanar
+  parameters:
+    receiver: data_receiver
+    transmitter: data_transmitter
+    pool: allocator
+    input_adapter: global/adapter_rgb_f32  # nhwc
+    output_adapter: global/adapter_planar_rgb_f32  # nchw
+    output_name: "input_tensor"
+---
+name: reshaper
+components:
+- name: data_receiver
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver
+    min_size: 1
+- name: data_transmitter
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter
+    min_size: 1
+- name: allocator
+  type: nvidia::gxf::BlockMemoryPool
+  parameters:
+    storage_type: 1
+    block_size: 6266880
+    num_blocks: 40
+- name: reshape_operator
+  type: nvidia::cvcore::tensor_ops::Reshape
+  parameters:
+    receiver: data_receiver
+    transmitter: data_transmitter
+    pool: allocator
+    input_adapter: global/adapter_planar_rgb_f32
+    output_adapter: global/adapter_planar_rgb_f32
+    output_name: "input_tensor"
+    output_shape: []
+---
+name: compositor
+components:
+- name: data_receiver_interleaved_to_planar
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 1
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver_interleaved_to_planar
+    min_size: 1
+- name: data_receiver_timestamp
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 1
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver_timestamp
+    min_size: 1
+- name: data_transmitter
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 1
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter
+    min_size: 1
+- name: compositor
+  type: nvidia::isaac_ros::MessageCompositor
+  parameters:
+    image_rx: data_receiver_interleaved_to_planar
+    camera_model_rx: data_receiver_timestamp
+    tx: data_transmitter
+---
+name: vault
+components:
+- name: signal
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 1
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: signal
+    min_size: 1
+- name: vault
+  type: nvidia::gxf::Vault
+  parameters:
+    source: signal
+    max_waiting_count: 1
+    drop_waiting: false
+---
+components:
+- name: edge0
+  type: nvidia::gxf::Connection
+  parameters:
+    source: broadcaster/data_transmitter_resizer
+    target: resizer/data_receiver
+---
+components:
+- name: edge1
+  type: nvidia::gxf::Connection
+  parameters:
+    source: resizer/data_transmitter
+    target: color_space_converter/data_receiver
+---
+components:
+- name: edge2
+  type: nvidia::gxf::Connection
+  parameters:
+    source: color_space_converter/data_transmitter
+    target: normalizer/data_receiver
+---
+components:
+- name: edge3
+  type: nvidia::gxf::Connection
+  parameters:
+    source: normalizer/data_transmitter
+    target: interleaved_to_planar/data_receiver
+---
+components:
+- name: edge4
+  type: nvidia::gxf::Connection
+  parameters:
+    source: interleaved_to_planar/data_transmitter
+    target: reshaper/data_receiver
+---
+components:
+- name: edge5
+  type: nvidia::gxf::Connection
+  parameters:
+    source: reshaper/data_transmitter
+    target: compositor/data_receiver_interleaved_to_planar
+---
+components:
+- name: edge6
+  type: nvidia::gxf::Connection
+  parameters:
+    source: broadcaster/data_transmitter_compositor
+    target: compositor/data_receiver_timestamp
+---
+components:
+- name: edge7
+  type: nvidia::gxf::Connection
+  parameters:
+    source: compositor/data_transmitter
+    target: vault/signal
+---
+components:
+- type: nvidia::gxf::GreedyScheduler
+  parameters:
+    clock: clock
+    stop_on_deadlock: false
+- name: clock
+  type: nvidia::gxf::RealtimeClock

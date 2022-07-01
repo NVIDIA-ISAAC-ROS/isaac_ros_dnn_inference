@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -16,10 +16,12 @@
 #include <utility>
 
 #include "rclcpp/rclcpp.hpp"
-#include "isaac_ros_nvengine_interfaces/msg/tensor.hpp"
-#include "isaac_ros_nvengine_interfaces/msg/tensor_list.hpp"
+#include "isaac_ros_tensor_list_interfaces/msg/tensor.hpp"
+#include "isaac_ros_tensor_list_interfaces/msg/tensor_list.hpp"
 
 
+namespace nvidia
+{
 namespace isaac_ros
 {
 namespace dnn_inference
@@ -31,11 +33,8 @@ namespace dnn_inference
 class TestTensorPublisherNode : public rclcpp::Node
 {
 public:
-  explicit TestTensorPublisherNode(const rclcpp::NodeOptions &);
-
   TestTensorPublisherNode(
-    const rclcpp::NodeOptions & options,
-    std::vector<uint> dimensions);
+    const rclcpp::NodeOptions & options);
 
   ~TestTensorPublisherNode();
 
@@ -44,6 +43,8 @@ public:
   TestTensorPublisherNode & operator=(const TestTensorPublisherNode &) = delete;
 
 private:
+  // Dimensions of tensor (eg. {3, 255, 255} for RGB Image of 255x255)
+  std::vector<int64_t> dimensions_;
   // Name of tensor
   const std::string tensor_name_;
   // Enum of type of data (check Tensor.msg for mappings)
@@ -52,17 +53,15 @@ private:
   const int length_;
   // Rank of tensor
   const int rank_;
-  // Dimensions of tensor (eg. {3, 255, 255} for RGB Image of 255x255)
-  std::vector<uint> dimensions_;
   // Publisher channel
   std::string pub_channel_;
 
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<isaac_ros_nvengine_interfaces::msg::TensorList>::SharedPtr pub_;
+  rclcpp::Publisher<isaac_ros_tensor_list_interfaces::msg::TensorList>::SharedPtr pub_;
 
   // Sets the tensor data based on size and type (supports only: float32)
   template<typename T>
-  void setTensorData(isaac_ros_nvengine_interfaces::msg::Tensor & tensor, int length)
+  void setTensorData(isaac_ros_tensor_list_interfaces::msg::Tensor & tensor, int length)
   {
     std::vector<T> test_data(length);
     tensor.data.resize(test_data.size() * sizeof(T));
@@ -74,5 +73,6 @@ private:
 
 }  // namespace dnn_inference
 }  // namespace isaac_ros
+}  // namespace nvidia
 
 #endif  // ISAAC_ROS_DNN_INFERENCE_TEST__TEST_TENSOR_PUBLISHER_NODE_HPP_
