@@ -17,7 +17,7 @@ The NVIDIA GPU Cloud hosts a [catalog](https://catalog.ngc.nvidia.com/models) of
 ## Using `tao-converter` to decrypt the Encrypted TLT Model (`.etlt`) Format
 As discussed above, models distributed with the `.etlt` file extension are encrypted and must be decrypted before use via NVIDIA's [`tao-converter`](https://developer.nvidia.com/tao-toolkit-get-started).
 
-`tao-converter` is already included in the Docker images available as part of the standard [Isaac ROS Development Environment](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common/docs/dev-env-setup.md).
+`tao-converter` is already included in the Docker images available as part of the standard [Isaac ROS Development Environment](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common/blob/main/docs/dev-env-setup.md).
 
 The per-platform installation paths are described below:
 
