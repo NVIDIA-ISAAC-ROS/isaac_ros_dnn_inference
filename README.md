@@ -171,7 +171,7 @@ To simplify development, we strongly recommend leveraging the Isaac ROS Dev Dock
         nanosec: 0
       frame_id: ''
     tensors:
-    - name: output
+    - name: output_tensor
       shape:
         rank: 4
         dims:
@@ -240,7 +240,7 @@ To simplify development, we strongly recommend leveraging the Isaac ROS Dev Dock
         nanosec: 0
       frame_id: ''
     tensors:
-    - name: output
+    - name: output_tensor
       shape:
         rank: 4
         dims:
@@ -321,18 +321,18 @@ ros2 launch isaac_ros_triton isaac_ros_triton.launch.py model_name:=<model_name>
 
 #### ROS Parameters
 
-| ROS Parameter             | Type          | Default | Description                                                                                                                                                                                                                          |
-| ------------------------- | ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `model_repository_paths`  | `string list` | `['']`  | The absolute paths to your model repositories in your local file system (the structure should follow Triton requirements) <br/> E.g. `['/tmp/models']`                                                                               |
-| `model_name`              | `string`      | `""`    | The name of your model. Under `model_repository_paths`, there should be a directory with this name, and it should align with the model name in the model configuration under this directory <br/> E.g. `mobilenetv2-1.0_triton_onnx` |
-| `max_batch_size`          | `uint16_t`    | `8`     | The maximum batch size allowed for the model. It should align with the model configuration                                                                                                                                           |
-| `num_concurrent_requests` | `uint16_t`    | `10`    | The number of requests the Triton server can take at a time. This should be set according to the tensor publisher frequency                                                                                                          |
-| `input_tensor_names`      | `string list` | `['']`  | A list of tensor names to be bound to specified input bindings names. Bindings occur in sequential order, so the first name here will be mapped to the first name in input_binding_names <br/> E.g. `['input']`                      |
-| `input_binding_names`     | `string list` | `['']`  | A list of input tensor binding names specified by model <br/> E.g. `['data']`                                                                                                                                                        |
-| `input_tensor_formats`    | `string list` | `['']`  | A list of input tensor nitros formats. This should be given in sequential order <br/> E.g. `['nitros_tensor_list_nchw_rgb_f32']`                                                                                                     |
-| `output_tensor_names`     | `string list` | `['']`  | A list of tensor names to be bound to specified output binding names <br/> E.g. `['output']`                                                                                                                                         |
-| `output_binding_names`    | `string list` | `['']`  | A list of tensor names to be bound to specified output binding names <br/> E.g. `['mobilenetv20_output_flatten0_reshape0']`                                                                                                          |
-| `output_tensor_formats`   | `string list` | `['']`  | A list of input tensor nitros formats. This should be given in sequential order <br/> E.g. `[nitros_tensor_list_nchw_rgb_f32]`                                                                                                       |
+| ROS Parameter             | Type          | Default             | Description                                                                                                                                                                                                                         |
+| ------------------------- | ------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model_repository_paths`  | `string list` | `['']`              | The absolute paths to your model repositories in your local file system (the structure should follow Triton requirements) <br/> E.g. `['/tmp/models']`                                                                              |
+| `model_name`              | `string`      | `""`                | The name of your model. Under `model_repository_paths`, there should be a directory with this name, and it should align with the model name in the model configuration under this directory <br/> E.g. `peoplesemsegnet_shuffleseg` |
+| `max_batch_size`          | `uint16_t`    | `8`                 | The maximum batch size allowed for the model. It should align with the model configuration                                                                                                                                          |
+| `num_concurrent_requests` | `uint16_t`    | `10`                | The number of requests the Triton server can take at a time. This should be set according to the tensor publisher frequency                                                                                                         |
+| `input_tensor_names`      | `string list` | `['input_tensor']`  | A list of tensor names to be bound to specified input bindings names. Bindings occur in sequential order, so the first name here will be mapped to the first name in input_binding_names                                            |
+| `input_binding_names`     | `string list` | `['']`              | A list of input tensor binding names specified by model <br/> E.g. `['input_2:0']`                                                                                                                                                  |
+| `input_tensor_formats`    | `string list` | `['']`              | A list of input tensor nitros formats. This should be given in sequential order <br/> E.g. `['nitros_tensor_list_nchw_rgb_f32']`                                                                                                    |
+| `output_tensor_names`     | `string list` | `['output_tensor']` | A list of tensor names to be bound to specified output binding names                                                                                                                                                                |
+| `output_binding_names`    | `string list` | `['']`              | A list of tensor names to be bound to specified output binding names <br/> E.g. `['argmax_1']`                                                                                                                                      |
+| `output_tensor_formats`   | `string list` | `['']`              | A list of input tensor nitros formats. This should be given in sequential order <br/> E.g. `[nitros_tensor_list_nchw_rgb_f32]`                                                                                                      |
 
 
 #### ROS Topics Subscribed
@@ -353,23 +353,23 @@ ros2 launch isaac_ros_tensor_rt isaac_ros_tensor_rt.launch.py model_file_path:=<
 
 #### ROS Parameters
 
-| ROS Parameter             | Type          | Default                | Description                                                                                                                                                                                                     |
-| ------------------------- | ------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `model_file_path`         | `string`      | `model.onnx`           | The absolute path to your model file in the local file system (the model file must be .onnx) <br/> E.g. `model.onnx`                                                                                            |
-| `engine_file_path`        | `string`      | `/tmp/trt_engine.plan` | The absolute path to either where you want your TensorRT engine plan to be generated (from your model file) or where your pre-generated engine plan file is located <br/> E.g. `model.plan`                     |
-| `force_engine_update`     | `bool`        | `true`                 | If set to true, the node will always try to generate a TensorRT engine plan from your model file and needs to be set to false to use the pre-generated TensorRT engine plan                                     |
-| `input_tensor_names`      | `string list` | `['']`                 | A list of tensor names to be bound to specified input bindings names. Bindings occur in sequential order, so the first name here will be mapped to the first name in input_binding_names <br/> E.g. `['input']` |
-| `input_binding_names`     | `string list` | `['']`                 | A list of input tensor binding names specified by model <br/> E.g. `['data']`                                                                                                                                   |
-| `input_tensor_formats`    | `string list` | `['']`                 | A list of input tensor nitros formats. This should be given in sequential order <br/> E.g. `['nitros_tensor_list_nchw_rgb_f32']`                                                                                |
-| `output_tensor_names`     | `string list` | `['']`                 | A list of tensor names to be bound to specified output binding names <br/> E.g. `['output']`                                                                                                                    |
-| `output_binding_names`    | `string list` | `['']`                 | A list of tensor names to be bound to specified output binding names <br/> E.g. `['mobilenetv20_output_flatten0_reshape0']`                                                                                     |
-| `output_tensor_formats`   | `string list` | `['']`                 | A list of input tensor nitros formats. This should be given in sequential order <br/> E.g. `[nitros_tensor_list_nchw_rgb_f32]`                                                                                  |
-| `verbose`                 | `bool`        | `true`                 | If set to true, the node will enable verbose logging to console from the internal TensorRT execution                                                                                                            |
-| `max_workspace_size`      | `int64_t`     | `67108864l`            | The size of the working space in bytes                                                                                                                                                                          |
-| `max_batch_size`          | `int32_t`     | `1`                    | The maximum possible batch size in case the first dimension is dynamic and used as the batch size                                                                                                               |
-| `dla_core`                | `int64_t`     | `-1`                   | The DLA Core to use. Fallback to GPU is always enabled. The default setting is GPU only                                                                                                                         |
-| `enable_fp16`             | `bool`        | `true`                 | Enables building a TensorRT engine plan file which uses FP16 precision for inference. If this setting is false, the plan file will use FP32 precision                                                           |
-| `relaxed_dimension_check` | `bool`        | `true`                 | Ignores dimensions of 1 for the input-tensor dimension check                                                                                                                                                    |
+| ROS Parameter             | Type          | Default                | Description                                                                                                                                                                                 |
+| ------------------------- | ------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model_file_path`         | `string`      | `model.onnx`           | The absolute path to your model file in the local file system (the model file must be .onnx) <br/> E.g. `model.onnx`                                                                        |
+| `engine_file_path`        | `string`      | `/tmp/trt_engine.plan` | The absolute path to either where you want your TensorRT engine plan to be generated (from your model file) or where your pre-generated engine plan file is located <br/> E.g. `model.plan` |
+| `force_engine_update`     | `bool`        | `true`                 | If set to true, the node will always try to generate a TensorRT engine plan from your model file and needs to be set to false to use the pre-generated TensorRT engine plan                 |
+| `input_tensor_names`      | `string list` | `['input_tensor']`     | A list of tensor names to be bound to specified input bindings names. Bindings occur in sequential order, so the first name here will be mapped to the first name in input_binding_names    |
+| `input_binding_names`     | `string list` | `['']`                 | A list of input tensor binding names specified by model <br/> E.g. `['input_2:0']`                                                                                                          |
+| `input_tensor_formats`    | `string list` | `['']`                 | A list of input tensor nitros formats. This should be given in sequential order <br/> E.g. `['nitros_tensor_list_nchw_rgb_f32']`                                                            |
+| `output_tensor_names`     | `string list` | `['output_tensor']`    | A list of tensor names to be bound to specified output binding names                                                                                                                        |
+| `output_binding_names`    | `string list` | `['']`                 | A list of tensor names to be bound to specified output binding names <br/> E.g. `['argmax_1']`                                                                                              |
+| `output_tensor_formats`   | `string list` | `['']`                 | A list of input tensor nitros formats. This should be given in sequential order <br/> E.g. `[nitros_tensor_list_nchw_rgb_f32]`                                                              |
+| `verbose`                 | `bool`        | `true`                 | If set to true, the node will enable verbose logging to console from the internal TensorRT execution                                                                                        |
+| `max_workspace_size`      | `int64_t`     | `67108864l`            | The size of the working space in bytes                                                                                                                                                      |
+| `max_batch_size`          | `int32_t`     | `1`                    | The maximum possible batch size in case the first dimension is dynamic and used as the batch size                                                                                           |
+| `dla_core`                | `int64_t`     | `-1`                   | The DLA Core to use. Fallback to GPU is always enabled. The default setting is GPU only                                                                                                     |
+| `enable_fp16`             | `bool`        | `true`                 | Enables building a TensorRT engine plan file which uses FP16 precision for inference. If this setting is false, the plan file will use FP32 precision                                       |
+| `relaxed_dimension_check` | `bool`        | `true`                 | Ignores dimensions of 1 for the input-tensor dimension check                                                                                                                                |
 #### ROS Topics Subscribed
 | ROS Topic    | Type                                                                                                                                                              | Description             |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |

@@ -43,7 +43,7 @@ TestTensorPublisherNode::TestTensorPublisherNode(
   const rclcpp::NodeOptions & options)
 : Node("test_tensor_publisher", options),
   dimensions_(declare_parameter<std::vector<int64_t>>("dimensions", {1, 3, 224, 224})),
-  tensor_name_(declare_parameter<std::string>("tensor_name", "input")),
+  tensor_name_(declare_parameter<std::string>("tensor_name", "input_tensor")),
   data_type_(declare_parameter<int>("data_type", 9)),
   length_(declare_parameter<int>("length", calculate_length(dimensions_))),
   rank_(declare_parameter<int>("rank", 4)),
