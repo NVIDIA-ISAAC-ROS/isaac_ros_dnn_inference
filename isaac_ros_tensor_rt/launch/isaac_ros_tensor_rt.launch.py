@@ -27,20 +27,20 @@ def generate_launch_description():
             description='The absolute file path to the TensorRT engine file'),
         DeclareLaunchArgument(
             'input_tensor_names',
-            default_value='["input"]',
+            default_value='["input_tensor"]',
             description='A list of tensor names to bound to the specified input binding names'),
         DeclareLaunchArgument(
             'input_binding_names',
-            default_value='["data"]',
+            default_value='[""]',
             description='A list of input tensor binding names (specified by model)'),
         DeclareLaunchArgument(
             'output_tensor_names',
-            default_value='["output"]',
+            default_value='["output_tensor"]',
             description='A list of tensor names to bound to the specified output binding names'),
         DeclareLaunchArgument(
             'output_binding_names',
-            default_value='["mobilenetv20_output_flatten0_reshape0"]',
-            description='A  list of output tensor binding names (specified by model)'),
+            default_value='[""]',
+            description='A list of output tensor binding names (specified by model)'),
         DeclareLaunchArgument(
             'verbose',
             default_value='False',
