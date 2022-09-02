@@ -17,6 +17,8 @@
 #include <string>
 #include <utility>
 
+#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
+
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
@@ -152,6 +154,8 @@ TritonNode::TritonNode(const rclcpp::NodeOptions & options)
       "[TritonNode] Set output data format to: \"%s\"",
       output_tensor_formats_[0].c_str());
   }
+
+  registerSupportedType<nvidia::isaac_ros::nitros::NitrosTensorList>();
 
   startNitrosNode();
 }

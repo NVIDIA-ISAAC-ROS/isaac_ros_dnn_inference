@@ -15,7 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "isaac_ros_nitros/types/nitros_image.hpp"
+#include "isaac_ros_nitros_image_type/nitros_image.hpp"
+#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 
 namespace nvidia
 {
@@ -112,6 +113,9 @@ DnnImageEncoderNode::DnnImageEncoderNode(const rclcpp::NodeOptions options)
             "[Dnn Image Encoder] Invalid network_image_height_, "
             "this needs to be set per the model input requirements.");
   }
+
+  registerSupportedType<nvidia::isaac_ros::nitros::NitrosImage>();
+  registerSupportedType<nvidia::isaac_ros::nitros::NitrosTensorList>();
 
   startNitrosNode();
 }
