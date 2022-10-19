@@ -1,9 +1,12 @@
 # DNN Inference Troubleshooting
+
 ## Seeing operation failed followed by the process dying
+
 One cause of this issue is when the GPU being used does not have enough memory to run the model. For example, DOPE may require up to 6GB of VRAM to operate, depending on the application.
 
 ### Symptom
-```
+
+```log
 [component_container_mt-1] 2022-06-27 08:35:37.518 ERROR extensions/tensor_ops/Reshape.cpp@71: reshape tensor failed.
 [component_container_mt-1] 2022-06-27 08:35:37.518 ERROR extensions/tensor_ops/TensorOperator.cpp@151: operation failed.
 [component_container_mt-1] 2022-06-27 08:35:37.518 ERROR gxf/std/entity_executor.cpp@200: Entity with 102 not found!
@@ -14,5 +17,7 @@ One cause of this issue is when the GPU being used does not have enough memory t
 [component_container_mt-1]   what():  [NitrosPublisher] Vault ("vault/vault", eid=102) was stopped. The graph may have been terminated due to an error.
 [ERROR] [component_container_mt-1]: process has died [pid 13378, exit code -6, cmd '/opt/ros/humble/install/lib/rclcpp_components/component_container_mt --ros-args -r __node:=dope_container -r __ns:=/'].
 ```
+
 ### Solution
+
 Try using the Isaac ROS TensorRT node or the Isaac ROS Triton node with the TensorRT backend instead. Otherwise, a discrete GPU with more VRAM may be required.
