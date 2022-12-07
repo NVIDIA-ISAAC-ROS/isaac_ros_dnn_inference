@@ -58,6 +58,10 @@ def generate_launch_description():
             'force_engine_update',
             default_value='False',
             description='Whether TensorRT should update the TensorRT engine file or not'),
+        DeclareLaunchArgument(
+            'plugin_library_paths',
+            default_value='[]',
+            description='A list of plugin library names to load'),
     ]
 
     # TensorRT parameters
@@ -69,6 +73,7 @@ def generate_launch_description():
     output_binding_names = LaunchConfiguration('output_binding_names')
     verbose = LaunchConfiguration('verbose')
     force_engine_update = LaunchConfiguration('force_engine_update')
+    plugin_library_paths = LaunchConfiguration('plugin_library_paths')
 
     tensor_rt_node = ComposableNode(
         name='tensor_rt',
@@ -84,7 +89,8 @@ def generate_launch_description():
             'input_tensor_names': input_tensor_names,
             'input_binding_names': input_binding_names,
             'verbose': verbose,
-            'force_engine_update': force_engine_update
+            'force_engine_update': force_engine_update,
+            'plugin_library_paths': plugin_library_paths,
         }]
     )
 

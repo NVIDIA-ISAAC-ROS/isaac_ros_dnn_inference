@@ -26,6 +26,49 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
+// For loadLibrary
+#ifdef _MSC_VER
+// Needed so that the max/min definitions in windows.h do not conflict with std::max/min.
+#define NOMINMAX
+#include <windows.h>
+#undef NOMINMAX
+#else
+#include <dlfcn.h>
+#endif
+
+namespace
+{
+inline void loadLibrary(const std::string & path, const rclcpp::Logger & logger)
+{
+#ifdef _MSC_VER
+    void* handle = LoadLibrary(path.c_str());
+#else
+    int32_t flags{RTLD_LAZY};
+#if ENABLE_ASAN
+    // https://github.com/google/sanitizers/issues/89
+    // asan doesn't handle module unloading correctly and there are no plans on doing
+    // so. In order to get proper stack traces, don't delete the shared library on
+    // close so that asan can resolve the symbols correctly.
+    flags |= RTLD_NODELETE;
+#endif // ENABLE_ASAN
+
+    void* handle = dlopen(path.c_str(), flags);
+#endif
+    if (handle == nullptr)
+    {
+#ifdef _MSC_VER
+        RCLCPP_INFO_STREAM(
+          logger, "Could not load plugin library: " << path << std::endl
+        );
+#else
+        RCLCPP_INFO_STREAM(
+          logger, "Could not load plugin library: " << path << ", due to: " << dlerror() << std::endl
+        );
+#endif
+    }
+}
+}  // namespace
+
 namespace nvidia
 {
 namespace isaac_ros
@@ -114,7 +157,8 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
   dla_core_(declare_parameter<int64_t>("dla_core", default_dla_core)),
   max_batch_size_(declare_parameter<int32_t>("max_batch_size", 1)),
   enable_fp16_(declare_parameter<bool>("enable_fp16", true)),
-  relaxed_dimension_check_(declare_parameter<bool>("relaxed_dimension_check", true))
+  relaxed_dimension_check_(declare_parameter<bool>("relaxed_dimension_check", true)),
+  plugin_library_paths_(declare_parameter<StringList>("plugin_library_paths", StringList()))
 {
   RCLCPP_DEBUG(get_logger(), "[TensorRTNode] In TensorRTNode's constructor");
 
@@ -162,6 +206,10 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
       get_logger(),
       "[TensorRTNode] Set output data format to: \"%s\"",
       output_tensor_formats_[0].c_str());
+  }
+
+  for (const auto & path : plugin_library_paths_) {
+    loadLibrary(path, get_logger());
   }
 
   registerSupportedType<nvidia::isaac_ros::nitros::NitrosTensorList>();

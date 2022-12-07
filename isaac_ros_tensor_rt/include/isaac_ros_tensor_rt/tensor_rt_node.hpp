@@ -71,6 +71,9 @@ private:
   const int32_t max_batch_size_;
   const bool enable_fp16_;
   const bool relaxed_dimension_check_;
+
+  // Plugin library paths
+  const StringList plugin_library_paths_;
 };
 
 }  // namespace dnn_inference
