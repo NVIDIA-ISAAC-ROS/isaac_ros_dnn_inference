@@ -116,7 +116,7 @@ components:
     output_height: 0
     interp_type: "linear"
     border_type: "zero"
-    keep_aspect_ratio: false
+    keep_aspect_ratio: true
     receiver: data_receiver
     transmitter: data_transmitter
     pool: allocator
