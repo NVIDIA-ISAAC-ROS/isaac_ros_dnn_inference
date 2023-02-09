@@ -2,6 +2,12 @@
 
 <div align="center"><img alt="Isaac ROS DNN Inference Sample Output (DOPE)" src="https://github.com/NVlabs/Deep_Object_Pose/raw/master/dope_objects.png" width="400px"/><img alt="Isaac ROS DNN Inference Sample Output (PeopleSemSegnet)" src="resources/peoplesemsegnet_rviz2.png" width="400px"/></div>
 
+---
+## Webinar Available
+Learn how to use this package by watching our on-demand webinar: [Accelerate YOLOv5 and Custom AI Models in ROS with NVIDIA Isaac](https://gateway.on24.com/wcc/experience/elitenvidiabrill/1407606/3998202/isaac-ros-webinar-series)
+
+---
+
 ## Overview
 
 This repository provides two NVIDIA GPU-accelerated ROS2 nodes that perform deep learning inference using custom models. One node uses the TensorRT SDK, while the other uses the Triton SDK. This repository also contains a node to preprocess images, and convert them into tensors for use by TensorRT and Triton.
@@ -33,6 +39,7 @@ These data have been collected per the methodology described [here](https://gith
 ## Table of Contents
 
 - [Isaac ROS DNN Inference](#isaac-ros-dnn-inference)
+  - [Webinar Available](#webinar-available)
   - [Overview](#overview)
     - [TensorRT](#tensorrt)
     - [Triton](#triton)
