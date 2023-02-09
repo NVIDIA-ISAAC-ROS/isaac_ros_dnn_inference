@@ -71,6 +71,9 @@ if(BUILD_TESTING)
 
   find_package(launch_testing_ament_cmake REQUIRED)
   add_launch_test(test/isaac_ros_dnn_image_encoder_test.py)
+  add_launch_test(test/isaac_ros_dnn_image_encoder_image_norm_test.py)
+  add_launch_test(test/isaac_ros_dnn_image_encoder_image_resize_test.py)
+
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE)
