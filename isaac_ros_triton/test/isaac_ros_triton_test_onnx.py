@@ -31,7 +31,7 @@ import rclpy
 
 @pytest.mark.rostest
 def generate_test_description():
-    """Generate launch description with all Triton ROS2 nodes for testing."""
+    """Generate launch description with all Triton ROS 2 nodes for testing."""
     # Loads and runs mobilenetv2-1.0
     dir_path = os.path.dirname(os.path.realpath(__file__))
     model_dir = dir_path + '/../../test/models'

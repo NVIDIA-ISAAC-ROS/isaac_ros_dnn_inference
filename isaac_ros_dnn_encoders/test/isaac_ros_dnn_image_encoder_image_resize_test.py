@@ -54,7 +54,8 @@ def generate_test_description():
             'network_image_width': NETWORK_IMAGE_WIDTH,
             'network_image_height': NETWORK_IMAGE_HEIGHT,
             'image_mean': list(IMAGE_MEAN),
-            'image_stddev': list(IMAGE_STDDEV)
+            'image_stddev': list(IMAGE_STDDEV),
+            'resize_mode': 1  # Pad mode
         }],
         remappings=[('encoded_tensor', 'tensors')])
 

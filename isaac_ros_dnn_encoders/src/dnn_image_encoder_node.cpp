@@ -59,11 +59,11 @@ constexpr char APP_YAML_FILENAME[] = "config/dnn_image_encoder_node.yaml";
 constexpr char PACKAGE_NAME[] = "isaac_ros_dnn_encoders";
 
 const std::vector<std::pair<std::string, std::string>> EXTENSIONS = {
-  {"isaac_ros_nitros", "gxf/std/libgxf_std.so"},
-  {"isaac_ros_nitros", "gxf/cuda/libgxf_cuda.so"},
-  {"isaac_ros_nitros", "gxf/serialization/libgxf_serialization.so"},
-  {"isaac_ros_nitros", "gxf/tensorops/libgxf_tensorops.so"},
-  {"isaac_ros_nitros", "gxf/libgxf_message_compositor.so"}
+  {"isaac_ros_gxf", "gxf/lib/std/libgxf_std.so"},
+  {"isaac_ros_gxf", "gxf/lib/cuda/libgxf_cuda.so"},
+  {"isaac_ros_gxf", "gxf/lib/serialization/libgxf_serialization.so"},
+  {"isaac_ros_image_proc", "gxf/lib/image_proc/libgxf_tensorops.so"},
+  {"isaac_ros_gxf", "gxf/lib/libgxf_message_compositor.so"}
 };
 const std::vector<std::string> PRESET_EXTENSION_SPEC_NAMES = {
   "isaac_ros_dnn_encoders",
@@ -108,7 +108,10 @@ DnnImageEncoderNode::DnnImageEncoderNode(const rclcpp::NodeOptions options)
   network_image_width_(declare_parameter<uint16_t>("network_image_width", 0)),
   network_image_height_(declare_parameter<uint16_t>("network_image_height", 0)),
   image_mean_(declare_parameter<std::vector<double>>("image_mean", {0.5, 0.5, 0.5})),
-  image_stddev_(declare_parameter<std::vector<double>>("image_stddev", {0.5, 0.5, 0.5}))
+  image_stddev_(declare_parameter<std::vector<double>>("image_stddev", {0.5, 0.5, 0.5})),
+  num_blocks_(declare_parameter<int64_t>("num_blocks", 40)),
+  resize_mode_(static_cast<ResizeMode>(
+      declare_parameter<int>("resize_mode", static_cast<int>(ResizeMode::kDistort))))
 {
   if (network_image_width_ == 0) {
     throw std::invalid_argument(
@@ -168,6 +171,10 @@ void DnnImageEncoderNode::postLoadGraphCallback()
   getNitrosContext().setParameterUInt64(
     "resizer", "nvidia::cvcore::tensor_ops::Resize", "output_height", network_image_height_);
 
+  getNitrosContext().setParameterBool(
+    "resizer", "nvidia::cvcore::tensor_ops::Resize", "keep_aspect_ratio",
+    resize_mode_ != ResizeMode::kDistort);
+
   const gxf::optimizer::ComponentInfo output_comp_info = {
     "nvidia::gxf::Vault",  // component_type_name
     "vault",               // component_name
@@ -198,6 +205,19 @@ void DnnImageEncoderNode::postLoadGraphCallback()
       "interleaved_to_planar", "nvidia::gxf::BlockMemoryPool", "block_size", block_size * 4);
     getNitrosContext().setParameterUInt64(
       "reshaper", "nvidia::gxf::BlockMemoryPool", "block_size", block_size * sizeof(float));
+
+    // The minimum number of memory blocks is set based on the receiver queue capacity
+    uint64_t num_blocks = std::max(static_cast<int>(num_blocks_), 40);
+    getNitrosContext().setParameterUInt64(
+      "resizer", "nvidia::gxf::BlockMemoryPool", "num_blocks", num_blocks);
+    getNitrosContext().setParameterUInt64(
+      "color_space_converter", "nvidia::gxf::BlockMemoryPool", "num_blocks", num_blocks);
+    getNitrosContext().setParameterUInt64(
+      "normalizer", "nvidia::gxf::BlockMemoryPool", "num_blocks", num_blocks);
+    getNitrosContext().setParameterUInt64(
+      "interleaved_to_planar", "nvidia::gxf::BlockMemoryPool", "num_blocks", num_blocks);
+    getNitrosContext().setParameterUInt64(
+      "reshaper", "nvidia::gxf::BlockMemoryPool", "num_blocks", num_blocks);
 
     std::vector<int32_t> final_tensor_shape{1,
       static_cast<int32_t>(image_type_to_channel_size.at(image_type->second)),

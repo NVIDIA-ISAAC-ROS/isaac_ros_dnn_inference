@@ -32,7 +32,7 @@ import rclpy
 
 @pytest.mark.rostest
 def generate_test_description():
-    """Generate launch description with all Triton ROS2 nodes for testing."""
+    """Generate launch description with all Triton ROS 2 nodes for testing."""
     # Loads and runs a simple tensorflow model
     dir_path = os.path.dirname(os.path.realpath(__file__))
     model_dir = dir_path + '/../../test/models'
@@ -45,6 +45,7 @@ def generate_test_description():
         parameters=[{
             'model_name': 'simple_triton_tf',
             'model_repository_paths': [model_dir],
+            'max_batch_size': 8,
             'input_binding_names': ['input_1'],
             'output_binding_names': ['add'],
             'input_tensor_names': ['input'],

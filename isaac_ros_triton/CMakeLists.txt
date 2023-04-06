@@ -15,56 +15,36 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.23.2)
 project(isaac_ros_triton LANGUAGES C CXX)
-
-
-# Default to C++17
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Default to Release build
-if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
-  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-endif()
-message( STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}" )
-
-execute_process(COMMAND uname -m COMMAND tr -d '\n'
-  OUTPUT_VARIABLE ARCHITECTURE
-)
+execute_process(COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
 message( STATUS "Architecture: ${ARCHITECTURE}" )
 
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
+# TritonNode
+ament_auto_add_library(triton_node SHARED src/triton_node.cpp)
+rclcpp_components_register_nodes(triton_node "nvidia::isaac_ros::dnn_inference::TritonNode")
+set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TritonNode;$<TARGET_FILE:triton_node>\n")
 
-# isaac_ros_triton_node
-ament_auto_add_library(isaac_ros_triton_node SHARED src/triton_node.cpp)
-target_compile_definitions(isaac_ros_triton_node
-  PRIVATE "COMPOSITION_BUILDING_DLL"
-)
-target_link_libraries(isaac_ros_triton_node)
-rclcpp_components_register_node(isaac_ros_triton_node
-  PLUGIN "nvidia::isaac_ros::dnn_inference::TritonNode"
-  EXECUTABLE isaac_ros_triton)
+### Install extensions built from source
 
-# Install config directory
-install(
-  DIRECTORY config
-  DESTINATION share/${PROJECT_NAME}
-)
-
-# Install package executable
-install(TARGETS isaac_ros_triton_node
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
+# Triton + dependencies
+add_subdirectory(gxf/triton)
+install(TARGETS gxf_triton_ext DESTINATION share/${PROJECT_NAME}/gxf/triton/)
+if( ${ARCHITECTURE} STREQUAL "x86_64" )
+  set(ARCH_GXF_PATH "gxf_x86_64_cuda_11_8")
+  elseif( ${ARCHITECTURE} STREQUAL "aarch64" )
+  set(ARCH_GXF_PATH "gxf_jetpack502")
+endif()
+install(DIRECTORY gxf/triton/nvds/lib/${ARCH_GXF_PATH}/
+        DESTINATION share/${PROJECT_NAME}/gxf/triton)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -75,4 +55,4 @@ if(BUILD_TESTING)
   add_launch_test(test/isaac_ros_triton_test_tf.py TIMEOUT "300")
 endif()
 
-ament_auto_package(INSTALL_TO_SHARE launch)
+ament_auto_package(INSTALL_TO_SHARE config launch)
