@@ -1,24 +1,34 @@
 # Isaac ROS DNN Inference
 
-<div align="center"><img alt="Isaac ROS DNN Inference Sample Output (DOPE)" src="https://github.com/NVlabs/Deep_Object_Pose/raw/master/dope_objects.png" width="400px"/><img alt="Isaac ROS DNN Inference Sample Output (PeopleSemSegnet)" src="resources/peoplesemsegnet_rviz2.png" width="400px"/></div>
+<div align="center"><img alt="bounding box for people detection" src="resources/isaac_ros_dnn_peoplenet.jpg" width="300px"/> <img alt="segementation mask for people detection" src="resources/isaac_ros_dnn_inference_peoplesemsegnet.jpg" width="300px"/></div>
 
 ---
+
 ## Webinar Available
+
 Learn how to use this package by watching our on-demand webinar: [Accelerate YOLOv5 and Custom AI Models in ROS with NVIDIA Isaac](https://gateway.on24.com/wcc/experience/elitenvidiabrill/1407606/3998202/isaac-ros-webinar-series)
 
 ---
 
 ## Overview
 
-This repository provides two NVIDIA GPU-accelerated ROS2 nodes that perform deep learning inference using custom models. One node uses the TensorRT SDK, while the other uses the Triton SDK. This repository also contains a node to preprocess images, and convert them into tensors for use by TensorRT and Triton.
+Isaac ROS DNN Inference contains ROS 2 packages for performing DNN inference, providing AI-based perception for robotics applications. DNN inference uses a pre-trained DNN model to ingest an input Tensor and output a prediction to an output Tensor.
 
-### TensorRT
+<div align="center"><img alt="graph of ROS nodes for DNN inference on images" src="resources/isaac_ros_dnn_inference_nodegraph.png" width="800px"/></div>
 
-TensorRT is a library that enables faster inference on NVIDIA GPUs; it provides an API for the user to load and execute inference with their own models. The TensorRT ROS2 node in this package integrates with the TensorRT API, so the user has no need to make any calls to or directly use TensorRT SDK. Instead, users simply configure the TensorRT node with their own custom models and parameters, and the node will make the necessary TensorRT API calls to load and execute the model. For further documentation on TensorRT, refer to the main page [here](https://developer.nvidia.com/tensorrt).
+Above is a typical graph of nodes for DNN inference on image data. The input image is resized to match the input resolution of the DNN; the image resolution may be reduced to improve DNN inference performance ,which typically scales directly with the number of pixels in the image. DNN inference requires input Tensors, so a DNN encoder node is used to convert from an input image to Tensors, including any data pre-processing that is required for the DNN model. Once DNN inference is performed, the DNN decoder node is used to convert the output Tensors to results that can be used by the application.
 
-### Triton
+TensorRT and Triton are two separate ROS nodes to perform DNN inference. The TensorRT node uses [TensorRT](https://developer.nvidia.com/tensorrt) to provide high-performance deep learning inference. TensorRT optimizes the DNN model for inference on the target hardware, including Jetson and discrete GPUs. It also supports specific operations that are commonly used by DNN models. For newer or bespoke DNN models, TensorRT may not support inference on the model. For these models, use the Triton node.  
 
-Triton is a framework that brings up a generic inference server that can be configured with a model repository, which is a collection of various types of models (e.g. ONNX Runtime, TensorRT Engine Plan, TensorFlow, PyTorch). A brief tutorial on how to set up a model repository is included below, and further documentation on Triton is also available [here](https://github.com/triton-inference-server/server).
+The Triton node uses the [Triton Inference Server](https://developer.nvidia.com/nvidia-triton-inference-server), which provides a compatible frontend supporting a combination of different inference backends (e.g. ONNX Runtime, TensorRT Engine Plan, TensorFlow, PyTorch). In-house benchmark results measure little difference between using TensorRT directly or configuring Triton to use TensorRT as a backend.
+
+Some DNN models may require custom DNN encoders to convert the input data to the Tensor format needed for the model, and custom DNN decoders to convert from output Tensors into results that can be used in the application. Leverage the DNN encoder and DNN decoder node(s) for image bounding box detection and image segmentation, or your own custom node(s).
+
+> **Note**: DNN inference can be performed on different types of input data, including audio, video, text, and various sensor data, such as LIDAR, camera, and RADAR. This package provides implementations for DNN encode and DNN decode functions for images, which are commonly used for perception in robotics. The DNNs operate on Tensors for their input, output, and internal transformations, so the input image needs to be converted to a Tensor for DNN inferencing.
+
+### DNN Models
+
+To perform DNN inferencing a DNN model is required.  NGC provides [pre-trained models](https://catalog.ngc.nvidia.com/models) for use in your robotics application.  Using [TAO](https://developer.nvidia.com/tao-toolkit) NGC pre-trained models can be fine-tuned for you application. Your own DNN models can be trained directly or download pre-trained models from one of the many model zoo’s available online for use with TensorRT and Triton ROS nodes.
 
 For more details about the setup of TensorRT and Triton, look [here](docs/tensorrt-and-triton-info.md).
 
@@ -28,21 +38,22 @@ This package is powered by [NVIDIA Isaac Transport for ROS (NITROS)](https://dev
 
 ## Performance
 
-The following are the benchmark performance results of the prepared pipelines in this package, by supported platform:
+The following table summarizes the per-platform performance statistics of sample graphs that use this package, with links included to the full benchmark output. These benchmark configurations are taken from the [Isaac ROS Benchmark](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark#list-of-isaac-ros-benchmarks) collection, based on the [`ros2_benchmark`](https://github.com/NVIDIA-ISAAC-ROS/ros2_benchmark) framework.
 
-| Pipeline               | AGX Orin           | Orin Nano          | x86_64 w/ RTX 3060 Ti |
-| ---------------------- | ------------------ | ------------------ | --------------------- |
-| PeopleSemSegNet (544p) | 260 fps <br> 3.7ms | 128 fps <br> 6.7ms | 300 fps <br> 2ms      |
-
-These data have been collected per the methodology described [here](https://github.com/NVIDIA-ISAAC-ROS/.github/blob/main/profile/performance-summary.md#methodology).
+| Sample Graph                                                                                                                                          | Input Size | AGX Orin                                                                                                                                                | Orin NX                                                                                                                                                | Orin Nano 8GB                                                                                                                                           | x86_64 w/ RTX 3060 Ti                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [TensorRT Node<br>DOPE](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/scripts//isaac_ros_tensor_rt_dope_node.py)          | VGA        | [48.1 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_tensor_rt_dope_node-agx_orin.json)<br>22 ms      | [17.2 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_tensor_rt_dope_node-orin_nx.json)<br>56 ms      | [13.0 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_tensor_rt_dope_node-orin_nano_8gb.json)<br>79 ms | [94.9 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_tensor_rt_dope_node-x86_64_rtx_3060Ti.json)<br>10 ms      |
+| [Triton Node<br>DOPE](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/scripts//isaac_ros_triton_dope_node.py)               | VGA        | [48.0 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_triton_dope_node-agx_orin.json)<br>22 ms         | [20.1 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_triton_dope_node-orin_nx.json)<br>540 ms        | [14.5 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_triton_dope_node-orin_nano_8gb.json)<br>790 ms   | [94.2 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_triton_dope_node-x86_64_rtx_3060Ti.json)<br>11 ms         |
+| [TensorRT Node<br>PeopleSemSegNet](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/scripts//isaac_ros_tensor_rt_ps_node.py) | 544p       | [467 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_tensor_rt_ps_node-agx_orin.json)<br>2.3 ms        | [270 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_tensor_rt_ps_node-orin_nx.json)<br>4.0 ms        | [184 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_tensor_rt_ps_node-orin_nano_8gb.json)<br>9.0 ms   | [1500 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_tensor_rt_ps_node-x86_64_rtx_3060Ti.json)<br>1.1 ms       |
+| [Triton Node<br>PeopleSemSegNet](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/scripts//isaac_ros_triton_ps_node.py)      | 544p       | [293 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_triton_ps_node-agx_orin.json)<br>3.7 ms           | [191 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_triton_ps_node-orin_nx.json)<br>5.5 ms           | --                                                                                                                                                      | [512 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_triton_ps_node-x86_64_rtx_3060Ti.json)<br>2.1 ms           |
+| [DNN Image Encoder Node](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/scripts//isaac_ros_dnn_image_encoder_node.py)      | VGA        | [2230 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_dnn_image_encoder_node-agx_orin.json)<br>0.60 ms | [1560 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_dnn_image_encoder_node-orin_nx.json)<br>0.89 ms | --                                                                                                                                                      | [5780 fps](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/blob/main/results/isaac_ros_dnn_image_encoder_node-x86_64_rtx_3060Ti.json)<br>0.45 ms |
 
 ## Table of Contents
 
 - [Isaac ROS DNN Inference](#isaac-ros-dnn-inference)
   - [Webinar Available](#webinar-available)
   - [Overview](#overview)
-    - [TensorRT](#tensorrt)
-    - [Triton](#triton)
+    - [DNN Models](#dnn-models)
     - [Isaac ROS NITROS Acceleration](#isaac-ros-nitros-acceleration)
   - [Performance](#performance)
   - [Table of Contents](#table-of-contents)
@@ -76,18 +87,18 @@ These data have been collected per the methodology described [here](https://gith
 
 ## Latest Update
 
-Update 2022-10-19: Updated OSS licensing
+Update 2023-04-05: Source available GXF extensions
 
 ## Supported Platforms
 
-This package is designed and tested to be compatible with ROS2 Humble running on [Jetson](https://developer.nvidia.com/embedded-computing) or an x86_64 system with an NVIDIA GPU.
+This package is designed and tested to be compatible with ROS 2 Humble running on [Jetson](https://developer.nvidia.com/embedded-computing) or an x86_64 system with an NVIDIA GPU.
 
-> **Note**: Versions of ROS2 earlier than Humble are **not** supported. This package depends on specific ROS2 implementation features that were only introduced beginning with the Humble release.
+> **Note**: Versions of ROS 2 earlier than Humble are **not** supported. This package depends on specific ROS 2 implementation features that were only introduced beginning with the Humble release.
 
-| Platform | Hardware                                                                                                                                                                                                 | Software                                                                                                             | Notes                                                                                                                                                                                   |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Jetson   | [Jetson Orin](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/) <br> [Jetson Xavier](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-agx-xavier/) | [JetPack 5.0.2](https://developer.nvidia.com/embedded/jetpack)                                                       | For best performance, ensure that [power settings](https://docs.nvidia.com/jetson/archives/r34.1/DeveloperGuide/text/SD/PlatformPowerAndPerformance.html) are configured appropriately. |
-| x86_64   | NVIDIA GPU                                                                                                                                                                                               | [Ubuntu 20.04+](https://releases.ubuntu.com/20.04/) <br> [CUDA 11.6.1+](https://developer.nvidia.com/cuda-downloads) |
+| Platform | Hardware                                                                                                                                                                                                 | Software                                                                                                           | Notes                                                                                                                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Jetson   | [Jetson Orin](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/) <br> [Jetson Xavier](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-agx-xavier/) | [JetPack 5.1.1](https://developer.nvidia.com/embedded/jetpack)                                                     | For best performance, ensure that [power settings](https://docs.nvidia.com/jetson/archives/r34.1/DeveloperGuide/text/SD/PlatformPowerAndPerformance.html) are configured appropriately. |
+| x86_64   | NVIDIA GPU                                                                                                                                                                                               | [Ubuntu 20.04+](https://releases.ubuntu.com/20.04/) <br> [CUDA 11.8+](https://developer.nvidia.com/cuda-downloads) |
 
 ### Docker
 
@@ -112,6 +123,10 @@ To simplify development, we strongly recommend leveraging the Isaac ROS Dev Dock
 
     ```bash
     git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros
+    ```
+
+    ```bash
+    git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline
     ```
 
     ```bash
@@ -338,12 +353,14 @@ To customize your development environment, reference [this guide](https://github
 
 #### ROS Parameters
 
-| ROS Parameter          | Type          | Default           | Description                                                                                     |
-| ---------------------- | ------------- | ----------------- | ----------------------------------------------------------------------------------------------- |
-| `network_image_width`  | `uint16_t`    | `0`               | The image width that the network expects. This will be used to resize the input `image` width   |
-| `network_image_height` | `uint16_t`    | `0`               | The image height that the network expects. This will be used to resize the input `image` height |
-| `image_mean`           | `double list` | `[0.5, 0.5, 0.5]` | The mean of the images per channel that will be used for normalization                          |
-| `image_stddev`         | `double list` | `[0.5, 0.5, 0.5]` | The standard deviation of the images per channel that will be used for normalization            |
+| ROS Parameter          | Type          | Default           | Description                                                                                                                          |
+| ---------------------- | ------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `network_image_width`  | `uint16_t`    | `0`               | The image width that the network expects. This will be used to resize the input `image` width                                        |
+| `network_image_height` | `uint16_t`    | `0`               | The image height that the network expects. This will be used to resize the input `image` height                                      |
+| `image_mean`           | `double list` | `[0.5, 0.5, 0.5]` | The mean of the images per channel that will be used for normalization                                                               |
+| `image_stddev`         | `double list` | `[0.5, 0.5, 0.5]` | The standard deviation of the images per channel that will be used for normalization                                                 |
+| `resize_mode`          | `int`         | `0`               | The mode to use when resizing an input image to match the required output dimensions <br> Supported values: Distort (`0`), Pad (`1`) |
+| `num_blocks`           | `int`         | `40`              | The number of pre-allocated memory blocks, should not be less than `40`.                                                             |
 
 > **Note**: the following parameters are no longer supported:
 >
@@ -456,6 +473,7 @@ For solutions to problems with using DNN models, please check [here](docs/troubl
 
 | Date       | Changes                                                                                                                      |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 2023-04-05 | Source available GXF extensions                                                                                              |
 | 2022-10-19 | Updated OSS licensing                                                                                                        |
 | 2022-08-31 | Update to be compatible with JetPack 5.0.2                                                                                   |
 | 2022-06-30 | Added format string parameter in Triton/TensorRT, switched to NITROS implementation, removed parameters in DNN Image Encoder |

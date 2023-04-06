@@ -31,6 +31,13 @@ namespace isaac_ros
 namespace dnn_inference
 {
 
+enum class ResizeMode
+{
+  kDistort = 0,
+  kPad = 1,
+  kCrop = 2
+};
+
 class DnnImageEncoderNode : public nitros::NitrosNode
 {
 public:
@@ -47,6 +54,8 @@ private:
   const uint16_t network_image_height_;
   const std::vector<double> image_mean_;
   const std::vector<double> image_stddev_;
+  int64_t num_blocks_;
+  const ResizeMode resize_mode_;
 };
 
 }  // namespace dnn_inference

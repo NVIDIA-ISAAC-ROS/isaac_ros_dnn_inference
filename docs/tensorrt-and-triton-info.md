@@ -28,13 +28,13 @@ Users can either prepare a custom model or download pre-trained models from NGC 
 
 In order to be a useful component of a ROS graph, both Isaac ROS Triton and TensorRT inference nodes will require application-specific `pre-processor` (`encoder`) and `post-processor` (`decoder`) nodes to handle type conversion and other necessary steps.
 
-A `pre-processor` node should take in a ROS2 message, perform the pre-processing steps dictated by the model, and then convert the data into an Isaac ROS Tensor List message. For example, a `pre-processor` node could resize an image, normalize it, and then convert it into a Tensor List.
+A `pre-processor` node should take in a ROS 2 message, perform the pre-processing steps dictated by the model, and then convert the data into an Isaac ROS Tensor List message. For example, a `pre-processor` node could resize an image, normalize it, and then convert it into a Tensor List.
 
-A `post-processor` node should be used to convert the Isaac ROS Tensor List output of the model inference into a useful ROS2 message. For example, a `post-processor` node may perform argmax to identify the class label from a classification problem.
+A `post-processor` node should be used to convert the Isaac ROS Tensor List output of the model inference into a useful ROS 2 message. For example, a `post-processor` node may perform argmax to identify the class label from a classification problem.
 
 <div align="center">
 
-![Using TensorRT or Triton](../resources/pipeline.png "Using TensorRT or Triton")
+![Using TensorRT or Triton](../resources/graph.png "Using TensorRT or Triton")
 
 </div>
 

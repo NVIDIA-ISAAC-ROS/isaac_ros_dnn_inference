@@ -59,6 +59,31 @@ components:
     verbose: true
     clock: utils/clock
 ---
+name: cuda_stream_sync
+components:
+- name: rx
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 1
+    policy: 0
+- name: tx
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: rx
+    min_size: 1
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: tx
+    min_size: 1
+- type: nvidia::gxf::CudaStreamSync
+  parameters:
+    rx: rx
+    tx: tx
+---
 name: vault
 components:
 - name: signal
@@ -82,6 +107,10 @@ components:
 - type: nvidia::gxf::Connection
   parameters:
     source: inference/tx
+    target: cuda_stream_sync/rx
+- type: nvidia::gxf::Connection
+  parameters:
+    source: cuda_stream_sync/tx
     target: vault/signal
 ---
 name: utils

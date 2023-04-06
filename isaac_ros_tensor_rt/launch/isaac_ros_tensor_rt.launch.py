@@ -23,7 +23,7 @@ from launch_ros.descriptions import ComposableNode
 
 
 def generate_launch_description():
-    """Generate launch description for TensorRT ROS2 node."""
+    """Generate launch description for TensorRT ROS 2 node."""
     # By default loads and runs mobilenetv2-1.0 included in isaac_ros_dnn_inference/models
     launch_args = [
         DeclareLaunchArgument(

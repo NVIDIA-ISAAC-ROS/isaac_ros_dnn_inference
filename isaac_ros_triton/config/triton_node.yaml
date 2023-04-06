@@ -46,6 +46,8 @@ components:
     max_batch_size: 0
     async_scheduling_term: triton_response/async_st
     inference_mode: Direct
+    output_storage_type: 0
+    use_sequence_data: true
 - name: requester
   type: nvidia::triton::TritonInferenceRequest
   parameters:
