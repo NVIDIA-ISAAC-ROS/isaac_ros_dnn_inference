@@ -1,6 +1,6 @@
 %YAML 1.2
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,36 +19,36 @@
 name: global
 components:
 - name: adapter_video_buffer
-  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  type: nvidia::isaac::tensor_ops::ImageAdapter
   parameters:
     message_type: "VideoBuffer"
 - name: adapter_bgr_u8
-  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  type: nvidia::isaac::tensor_ops::ImageAdapter
   parameters:
     message_type: "Tensor"
     image_type: "BGR_U8"
 - name: adapter_rgb_u8
-  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  type: nvidia::isaac::tensor_ops::ImageAdapter
   parameters:
     message_type: "Tensor"
     image_type: "RGB_U8"
 - name: adapter_bgr_f32
-  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  type: nvidia::isaac::tensor_ops::ImageAdapter
   parameters:
     message_type: "Tensor"
     image_type: "BGR_F32"
 - name: adapter_rgb_f32
-  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  type: nvidia::isaac::tensor_ops::ImageAdapter
   parameters:
     message_type: "Tensor"
     image_type: "RGB_F32"
 - name: adapter_planar_bgr_f32
-  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  type: nvidia::isaac::tensor_ops::ImageAdapter
   parameters:
     message_type: "Tensor"
     image_type: "PLANAR_BGR_F32"
 - name: adapter_planar_rgb_f32
-  type: nvidia::cvcore::tensor_ops::ImageAdapter
+  type: nvidia::isaac::tensor_ops::ImageAdapter
   parameters:
     message_type: "Tensor"
     image_type: "PLANAR_RGB_F32"
@@ -110,7 +110,7 @@ components:
     block_size: 1566720
     num_blocks: 40
 - name: resize_operator
-  type: nvidia::cvcore::tensor_ops::Resize
+  type: nvidia::isaac::tensor_ops::Resize
   parameters:
     output_width: 0
     output_height: 0
@@ -150,7 +150,7 @@ components:
     block_size: 1566720
     num_blocks: 40
 - name: color_converter_operator
-  type: nvidia::cvcore::tensor_ops::ConvertColorFormat
+  type: nvidia::isaac::tensor_ops::ConvertColorFormat
   parameters:
     output_type: "RGB_U8"
     receiver: data_receiver
@@ -186,7 +186,7 @@ components:
     block_size: 6266880
     num_blocks: 40
 - name: normalizer_operator
-  type: nvidia::cvcore::tensor_ops::Normalize
+  type: nvidia::isaac::tensor_ops::Normalize
   parameters:
     scales: [ 0.0156862745, 0.00490196078, 0.00784313725 ]
     offsets: [ -127.5, -153.0, -63.75 ]
@@ -223,7 +223,7 @@ components:
     block_size: 6266880
     num_blocks: 40
 - name: interleaved_to_planar_operator
-  type: nvidia::cvcore::tensor_ops::InterleavedToPlanar
+  type: nvidia::isaac::tensor_ops::InterleavedToPlanar
   parameters:
     receiver: data_receiver
     transmitter: data_transmitter
@@ -259,7 +259,7 @@ components:
     block_size: 6266880
     num_blocks: 40
 - name: reshape_operator
-  type: nvidia::cvcore::tensor_ops::Reshape
+  type: nvidia::isaac::tensor_ops::Reshape
   parameters:
     receiver: data_receiver
     transmitter: data_transmitter
@@ -304,7 +304,7 @@ components:
     camera_model_rx: data_receiver_timestamp
     tx: data_transmitter
 ---
-name: vault
+name: sink
 components:
 - name: signal
   type: nvidia::gxf::DoubleBufferReceiver
@@ -315,12 +315,10 @@ components:
   parameters:
     receiver: signal
     min_size: 1
-- name: vault
-  type: nvidia::gxf::Vault
+- name: sink
+  type: nvidia::isaac_ros::MessageRelay
   parameters:
     source: signal
-    max_waiting_count: 1
-    drop_waiting: false
 ---
 components:
 - name: edge0
@@ -376,12 +374,13 @@ components:
   type: nvidia::gxf::Connection
   parameters:
     source: compositor/data_transmitter
-    target: vault/signal
+    target: sink/signal
 ---
 components:
 - type: nvidia::gxf::GreedyScheduler
   parameters:
     clock: clock
     stop_on_deadlock: false
+    check_recession_period_us: 100
 - name: clock
   type: nvidia::gxf::RealtimeClock

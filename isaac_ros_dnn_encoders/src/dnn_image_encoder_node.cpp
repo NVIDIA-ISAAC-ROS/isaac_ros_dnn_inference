@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ constexpr char INPUT_COMPONENT_KEY[] = "broadcaster/data_receiver";
 constexpr char INPUT_DEFAULT_IMAGE_FORMAT[] = "nitros_image_bgr8";
 constexpr char INPUT_TOPIC_NAME[] = "image";
 
-constexpr char OUTPUT_COMPONENT_KEY[] = "vault/vault";
+constexpr char OUTPUT_COMPONENT_KEY[] = "sink/sink";
 constexpr char OUTPUT_DEFAULT_TENSOR_FORMAT[] = "nitros_tensor_list_nchw_rgb_f32";
 constexpr char OUTPUT_TOPIC_NAME[] = "encoded_tensor";
 
@@ -148,7 +148,7 @@ void DnnImageEncoderNode::preLoadGraphCallback()
     std::to_string(scale[2]) + "]";
   NitrosNode::preLoadGraphSetParameter(
     "normalizer",
-    "nvidia::cvcore::tensor_ops::Normalize",
+    "nvidia::isaac::tensor_ops::Normalize",
     "scales",
     scales);
 
@@ -157,7 +157,7 @@ void DnnImageEncoderNode::preLoadGraphCallback()
     std::to_string(offset[2]) + "]";
   NitrosNode::preLoadGraphSetParameter(
     "normalizer",
-    "nvidia::cvcore::tensor_ops::Normalize",
+    "nvidia::isaac::tensor_ops::Normalize",
     "offsets",
     offsets);
 }
@@ -167,18 +167,18 @@ void DnnImageEncoderNode::postLoadGraphCallback()
   RCLCPP_INFO(get_logger(), "In DNN Image Encoder Node postLoadGraphCallback().");
 
   getNitrosContext().setParameterUInt64(
-    "resizer", "nvidia::cvcore::tensor_ops::Resize", "output_width", network_image_width_);
+    "resizer", "nvidia::isaac::tensor_ops::Resize", "output_width", network_image_width_);
   getNitrosContext().setParameterUInt64(
-    "resizer", "nvidia::cvcore::tensor_ops::Resize", "output_height", network_image_height_);
+    "resizer", "nvidia::isaac::tensor_ops::Resize", "output_height", network_image_height_);
 
   getNitrosContext().setParameterBool(
-    "resizer", "nvidia::cvcore::tensor_ops::Resize", "keep_aspect_ratio",
+    "resizer", "nvidia::isaac::tensor_ops::Resize", "keep_aspect_ratio",
     resize_mode_ != ResizeMode::kDistort);
 
   const gxf::optimizer::ComponentInfo output_comp_info = {
-    "nvidia::gxf::Vault",  // component_type_name
-    "vault",               // component_name
-    "vault"                // entity_name
+    "nvidia::isaac_ros::MessageRelay",  // component_type_name
+    "sink",                             // component_name
+    "sink"                              // entity_name
   };
   const std::string negotiated_tensor_format = getFinalDataFormat(output_comp_info);
 
@@ -226,7 +226,7 @@ void DnnImageEncoderNode::postLoadGraphCallback()
     };
 
     getNitrosContext().setParameter1DInt32Vector(
-      "reshaper", "nvidia::cvcore::tensor_ops::Reshape", "output_shape",
+      "reshaper", "nvidia::isaac::tensor_ops::Reshape", "output_shape",
       final_tensor_shape);
   }
 }

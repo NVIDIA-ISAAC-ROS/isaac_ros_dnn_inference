@@ -1,6 +1,6 @@
 %YAML 1.2
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -110,7 +110,7 @@ components:
     allocator: allocator
     mode: 0
 ---
-name: vault
+name: sink
 components:
 - name: signal
   type: nvidia::gxf::DoubleBufferReceiver
@@ -121,12 +121,10 @@ components:
   parameters:
     receiver: signal
     min_size: 1
-- name: vault
-  type: nvidia::gxf::Vault
+- name: sink
+  type: nvidia::isaac_ros::MessageRelay
   parameters:
     source: signal
-    max_waiting_count: 1
-    drop_waiting: false
 ---
 components:
 - type: nvidia::gxf::Connection
@@ -136,12 +134,13 @@ components:
 - type: nvidia::gxf::Connection
   parameters:
     source: tensor_copier/output
-    target: vault/signal
+    target: sink/signal
 ---
 components:
 - type: nvidia::gxf::GreedyScheduler
   parameters:
     clock: clock
     stop_on_deadlock: false
+    check_recession_period_us: 100
 - name: clock
   type: nvidia::gxf::RealtimeClock
