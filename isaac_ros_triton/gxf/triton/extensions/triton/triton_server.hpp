@@ -78,6 +78,7 @@ class TritonServer : public nvidia::gxf::Component {
         "Path to Triton Backend Directory",
         "Path to Triton Backend Directory", std::string(""));
 
+      // TODO(@niralp): Design GXF Model Explicit mode
       result &= registrar->parameter(model_control_mode_,
         "model_control_mode",
         "Triton Model Control Mode",

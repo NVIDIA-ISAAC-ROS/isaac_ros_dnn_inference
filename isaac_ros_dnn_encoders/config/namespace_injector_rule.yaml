@@ -1,6 +1,6 @@
 %YAML 1.2
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,13 +20,13 @@ name: DNN Image Encoder Namespace Injector Rule
 operation: namespace_injector
 body:
   components:
-    - type: nvidia::cvcore::tensor_ops::ConvertColorFormat
+    - type: nvidia::isaac::tensor_ops::ConvertColorFormat
       path_parameter_keys: [input_adapter, output_adapter]
-    - type: nvidia::cvcore::tensor_ops::Resize
+    - type: nvidia::isaac::tensor_ops::Resize
       path_parameter_keys: [input_adapter, output_adapter]
-    - type: nvidia::cvcore::tensor_ops::Normalize
+    - type: nvidia::isaac::tensor_ops::Normalize
       path_parameter_keys: [input_adapter, output_adapter]
-    - type: nvidia::cvcore::tensor_ops::InterleavedToPlanar
+    - type: nvidia::isaac::tensor_ops::InterleavedToPlanar
       path_parameter_keys: [input_adapter, output_adapter]
-    - type: nvidia::cvcore::tensor_ops::Reshape
+    - type: nvidia::isaac::tensor_ops::Reshape
       path_parameter_keys: [input_adapter, output_adapter]

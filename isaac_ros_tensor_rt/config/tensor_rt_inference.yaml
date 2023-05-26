@@ -1,6 +1,6 @@
 %YAML 1.2
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ components:
     rx: rx
     tx: tx
 ---
-name: vault
+name: sink
 components:
 - name: signal
   type: nvidia::gxf::DoubleBufferReceiver
@@ -95,12 +95,10 @@ components:
   parameters:
     receiver: signal
     min_size: 1
-- name: vault
-  type: nvidia::gxf::Vault
+- name: sink
+  type: nvidia::isaac_ros::MessageRelay
   parameters:
     source: signal
-    max_waiting_count: 1
-    drop_waiting: false
 ---
 name: connections
 components:
@@ -111,7 +109,7 @@ components:
 - type: nvidia::gxf::Connection
   parameters:
     source: cuda_stream_sync/tx
-    target: vault/signal
+    target: sink/signal
 ---
 name: utils
 components:
@@ -121,6 +119,7 @@ components:
   parameters:
     clock: clock
     stop_on_deadlock: false
+    check_recession_period_us: 100
 - name: stream
   type: nvidia::gxf::CudaStreamPool
   parameters:
