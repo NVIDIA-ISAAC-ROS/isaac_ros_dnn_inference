@@ -41,7 +41,7 @@ Here are some examples for generating the TensorRT engine file using `tao-conver
 
    > **Note:** The specific values used in the command above are retrieved from the **PeopleSemSegnet** page under the **Overview** tab. The model input node name and output node name can be found in `peoplesemsegnet_shuffleseg_cache.txt` from `File Browser`. The output file is specified using the `-e` option. The tool needs write permission to the output directory.
    >
-   > A detailed explanation of the input parameters is available [here](https://docs.nvidia.com/tao/tao-toolkit/text/tensorrt.html#running-the-tao-converter).
+   > A detailed explanation of the input parameters is available [here](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/resources/tao-converter).
 
 #### Generate an engine file for the data type `int8`
 
