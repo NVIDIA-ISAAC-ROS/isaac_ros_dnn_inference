@@ -39,23 +39,25 @@ INPUT_IMAGE_HEIGHT = 1080
 
 NETWORK_IMAGE_WIDTH = 512
 NETWORK_IMAGE_HEIGHT = 512
-IMAGE_MEAN = np.array([0.5, 0.6, 0.25])
-IMAGE_STDDEV = np.array([0.25, 0.8, 0.5])
+IMAGE_MEAN = np.array([0.5, 0.5, 0.5])
+IMAGE_STDDEV = np.array([0.5, 0.5, 0.5])
 
 
 @pytest.mark.rostest
 def generate_test_description():
     encoder_node = ComposableNode(
         name='encoder',
-        package='isaac_ros_dnn_encoders',
+        package='isaac_ros_dnn_image_encoder',
         plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
         namespace=IsaacROSDnnImageEncoderImageResizeNodeTest.generate_namespace(),
         parameters=[{
+            'input_image_width': INPUT_IMAGE_WIDTH,
+            'input_image_height': INPUT_IMAGE_HEIGHT,
             'network_image_width': NETWORK_IMAGE_WIDTH,
             'network_image_height': NETWORK_IMAGE_HEIGHT,
             'image_mean': list(IMAGE_MEAN),
             'image_stddev': list(IMAGE_STDDEV),
-            'resize_mode': 1  # Pad mode
+            'enable_padding': True
         }],
         remappings=[('encoded_tensor', 'tensors')])
 
@@ -87,25 +89,28 @@ class IsaacROSDnnImageEncoderImageResizeNodeTest(IsaacROSBaseTest):
             Image, self.namespaces['image'], self.DEFAULT_QOS)
 
         subs = self.create_logging_subscribers(
-            [('tensors', TensorList)], received_messages)
+            [('tensors', TensorList)], received_messages, accept_multiple_messages=False)
 
         try:
-            # Create gray image with colored pixels
-            cv_image = np.ones((INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, 3), np.uint8) * 127
+            # Create image with colored pixels
+            cv_image = np.ones((INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, 3), np.uint8) * 255
 
             # What fraction of each dimension should be colored for tracing
-            TRACER_PATCH_SIZE_FRACTION = 0.05
+            TRACER_PATCH_SIZE_FRACTION = 0.5
 
             # Patch guaranteed to be at least 1 pixel large
             TRACER_PATCH_HEIGHT = ceil(TRACER_PATCH_SIZE_FRACTION * INPUT_IMAGE_HEIGHT)
             TRACER_PATCH_WIDTH = ceil(TRACER_PATCH_SIZE_FRACTION * INPUT_IMAGE_WIDTH)
 
             # Input image layout:
-            # -------------------
-            # | R             G |
-            # |                 |
-            # |                 |
-            # | B               |
+            # --------------------
+            # | R R R R  G G G G |
+            # | R R R R  G G G G |
+            # | R R R R  G G G G |
+            # |                  |
+            # | B B B B  W W W W |
+            # | B B B B  W W W W |
+            # | B B B B  W W W W |
             # -------------------
 
             # Red pixels in top left corner
@@ -160,45 +165,76 @@ class IsaacROSDnnImageEncoderImageResizeNodeTest(IsaacROSBaseTest):
                     )
                 )
 
-            red_pixel, green_pixel, blue_pixel = None, None, None
-
             # Compute expected values corresponding to R, G, B after normalization
             RED_EXPECTED_VAL, GREEN_EXPECTED_VAL, BLUE_EXPECTED_VAL = (
-                1 - IMAGE_MEAN) / IMAGE_STDDEV
-
+                                                                    1 - IMAGE_MEAN) / IMAGE_STDDEV
             COLOR_MATCH_TOLERANCE = 0.05
+
+            red_pixel_count = 0
+            green_pixel_count = 0
+            blue_pixel_count = 0
+            white_pixel_count = 0
+            black_pixel_count = 0
+
+            # Expected o/p tensor layout:
+            # --------------------
+            # | Black Black Black|
+            # | R R R R  G G G G |
+            # | R R R R  G G G G |
+            # | R R R R  G G G G |
+            # | R R R R  G G G G |
+            # |                  |
+            # | B B B B  W W W W |
+            # | B B B B  W W W W |
+            # | B B B B  W W W W |
+            # | B B B B  W W W W |
+            # | Black Black Black|
+            # --------------------
+
+            EXPECTED_NUM_RED_PIXELS = (NETWORK_IMAGE_WIDTH *
+                                       (float(INPUT_IMAGE_HEIGHT) / float(INPUT_IMAGE_WIDTH))) *\
+                TRACER_PATCH_SIZE_FRACTION * (NETWORK_IMAGE_WIDTH / 2)
+
+            EXPECTED_NUM_GREEN_PIXELS = EXPECTED_NUM_RED_PIXELS
+            EXPECTED_NUM_BLUE_PIXELS = EXPECTED_NUM_RED_PIXELS
+            EXPECTED_NUM_WHITE_PIXELS = EXPECTED_NUM_RED_PIXELS
+
+            EXPECTED_NUM_BLACK_PIXELS = (NETWORK_IMAGE_WIDTH - NETWORK_IMAGE_WIDTH *
+                                         (float(INPUT_IMAGE_HEIGHT) / float(INPUT_IMAGE_WIDTH))) *\
+                TRACER_PATCH_SIZE_FRACTION * (NETWORK_IMAGE_WIDTH) * 2
+
             for y in range(NETWORK_IMAGE_HEIGHT):
                 for x in range(NETWORK_IMAGE_WIDTH):
                     # Extract 3 float values corresponding to the
                     r, g, b = extract_pixel(tensor.data, x, y)
 
-                    # Match pixel based on color channels
-                    # Only record the first matching pixel
-                    if red_pixel is None and abs(r - RED_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE:
-                        red_pixel = (x, y)
-                    if green_pixel is None and abs(g - GREEN_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE:
-                        green_pixel = (x, y)
-                    if blue_pixel is None and abs(b - BLUE_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE:
-                        blue_pixel = (x, y)
+                    if(abs(r - RED_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
+                       and g < COLOR_MATCH_TOLERANCE and b < COLOR_MATCH_TOLERANCE):
+                        red_pixel_count += 1
+                    if(abs(g - GREEN_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
+                       and r < COLOR_MATCH_TOLERANCE and b < COLOR_MATCH_TOLERANCE):
+                        green_pixel_count += 1
+                    if(abs(b - BLUE_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
+                       and r < COLOR_MATCH_TOLERANCE and g < COLOR_MATCH_TOLERANCE):
+                        blue_pixel_count += 1
+                    if(abs(r - RED_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE and
+                       abs(g - GREEN_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE and
+                       abs(b - BLUE_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE):
+                        white_pixel_count += 1
+                    if(r < COLOR_MATCH_TOLERANCE and g < COLOR_MATCH_TOLERANCE and
+                       b < COLOR_MATCH_TOLERANCE):
+                        black_pixel_count += 1
 
-            self.assertIsNotNone(
-                red_pixel, f'Failed to find any red pixels with r={RED_EXPECTED_VAL}')
-            self.assertIsNotNone(
-                green_pixel, f'Failed to find any green pixels with g={GREEN_EXPECTED_VAL}')
-            self.assertIsNotNone(
-                blue_pixel, f'Failed to find any blue pixels with b={BLUE_EXPECTED_VAL}')
-
-            # Calculate distances between tracer pixels
-            output_width = green_pixel[0] - red_pixel[0] + 1    # Top right - Top left
-            output_height = blue_pixel[1] - red_pixel[1] + 1    # Bottom left - Top left
-
-            # Ensure aspect ratio was preserved
-            self.assertAlmostEquals(
-                output_width / output_height,
-                INPUT_IMAGE_WIDTH / INPUT_IMAGE_HEIGHT,
-                places=2,
-                msg='Aspect ratio was not preserved!'
-            )
+            self.assertEqual(red_pixel_count, EXPECTED_NUM_RED_PIXELS,
+                             msg='Count of red pixles do not match')
+            self.assertEqual(green_pixel_count, EXPECTED_NUM_GREEN_PIXELS,
+                             msg='Count of green pixles do not match')
+            self.assertEqual(blue_pixel_count, EXPECTED_NUM_BLUE_PIXELS,
+                             msg='Count of blue pixles do not match')
+            self.assertEqual(white_pixel_count, EXPECTED_NUM_WHITE_PIXELS,
+                             msg='Count of white pixles do not match')
+            self.assertEqual(black_pixel_count, EXPECTED_NUM_BLACK_PIXELS,
+                             msg='Count of black pixles do not match')
 
         finally:
             self.node.destroy_subscription(subs)

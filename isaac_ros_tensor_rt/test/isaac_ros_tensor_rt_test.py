@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ def generate_test_description():
     # Remove the default trt_engine.plan before starting the node if it exists
     try:
         os.remove('/tmp/trt_engine.plan')
-        print('Deleted exisiting /tmp/trt_engine.plan')
+        print('Deleted existing /tmp/trt_engine.plan')
     except OSError as e:
         if e.errno != errno.ENOENT:
             print('File exists but error deleting /tmp/trt_engine.plan ')
@@ -102,13 +102,28 @@ class IsaacROSTensorRTNodeTest(IsaacROSBaseTest):
     MODEL_PATH = '/tmp/trt_engine.plan'
 
     def test_tensor_rt_node(self) -> None:
+        self.node._logger.info(
+            f'Generating model (timeout={self.MODEL_GENERATION_TIMEOUT_SEC}s)')
         start_time = time.time()
+        wait_cycles = 1
         while not os.path.isfile(self.MODEL_PATH):
-            if (time.time() - start_time) > self.MODEL_GENERATION_TIMEOUT_SEC:
+            time_diff = time.time() - start_time
+            if time_diff > self.MODEL_GENERATION_TIMEOUT_SEC:
                 self.fail('Model generation timed out')
+            if time_diff > wait_cycles*10:
+                self.node._logger.info(
+                    f'Waiting for model generation to finish... ({int(time_diff)}s passed)')
+                wait_cycles += 1
             time.sleep(1)
+
+        self.node._logger.info(
+            f'Model generation was finished (took {(time.time() - start_time)}s)')
+        self.node._logger.info(
+            f'Waiting {self.GXF_WAIT_SEC}s for the engine to be initialized')
+
         # Wait for TensorRT Engine to be initialized
         time.sleep(self.GXF_WAIT_SEC)
+
         self.node._logger.info('Starting Isaac ROS TensorRT Node POL Test')
 
         received_messages = {}
@@ -148,6 +163,8 @@ class IsaacROSTensorRTNodeTest(IsaacROSBaseTest):
 
             pub_tensor_list.tensors = [pub_tensor]
 
+            self.node._logger.info(
+                f'Publishing test tensors for {self.PYTHON_SUBSCRIBER_WAIT_SEC}s')
             end_time = time.time() + self.PYTHON_SUBSCRIBER_WAIT_SEC
             while time.time() < end_time:
                 tensor_pub.publish(pub_tensor_list)

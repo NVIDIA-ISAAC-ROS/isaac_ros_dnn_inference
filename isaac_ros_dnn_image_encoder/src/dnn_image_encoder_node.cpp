@@ -15,7 +15,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "isaac_ros_dnn_encoders/dnn_image_encoder_node.hpp"
+#include "isaac_ros_dnn_image_encoder/dnn_image_encoder_node.hpp"
 
 #include <memory>
 #include <string>
@@ -56,7 +56,7 @@ constexpr char OUTPUT_DEFAULT_TENSOR_FORMAT[] = "nitros_tensor_list_nchw_rgb_f32
 constexpr char OUTPUT_TOPIC_NAME[] = "encoded_tensor";
 
 constexpr char APP_YAML_FILENAME[] = "config/dnn_image_encoder_node.yaml";
-constexpr char PACKAGE_NAME[] = "isaac_ros_dnn_encoders";
+constexpr char PACKAGE_NAME[] = "isaac_ros_dnn_image_encoder";
 
 const std::vector<std::pair<std::string, std::string>> EXTENSIONS = {
   {"isaac_ros_gxf", "gxf/lib/std/libgxf_std.so"},
@@ -105,14 +105,21 @@ DnnImageEncoderNode::DnnImageEncoderNode(const rclcpp::NodeOptions options)
     GENERATOR_RULE_FILENAMES,
     EXTENSIONS,
     PACKAGE_NAME),
+  input_image_width_(declare_parameter<uint16_t>("input_image_width", 0)),
+  input_image_height_(declare_parameter<uint16_t>("input_image_height", 0)),
   network_image_width_(declare_parameter<uint16_t>("network_image_width", 0)),
   network_image_height_(declare_parameter<uint16_t>("network_image_height", 0)),
+  enable_padding_(declare_parameter<bool>("enable_padding", true)),
   image_mean_(declare_parameter<std::vector<double>>("image_mean", {0.5, 0.5, 0.5})),
   image_stddev_(declare_parameter<std::vector<double>>("image_stddev", {0.5, 0.5, 0.5})),
-  num_blocks_(declare_parameter<int64_t>("num_blocks", 40)),
-  resize_mode_(static_cast<ResizeMode>(
-      declare_parameter<int>("resize_mode", static_cast<int>(ResizeMode::kDistort))))
+  num_blocks_(declare_parameter<int64_t>("num_blocks", 40))
 {
+  if (input_image_width_ == 0) {
+    throw std::invalid_argument("[Dnn Image Encoder] Invalid input_image_width");
+  }
+  if (input_image_height_ == 0) {
+    throw std::invalid_argument("[Dnn Image Encoder] Invalid input_image_height");
+  }
   if (network_image_width_ == 0) {
     throw std::invalid_argument(
             "[Dnn Image Encoder] Invalid network_image_width, "
@@ -120,7 +127,7 @@ DnnImageEncoderNode::DnnImageEncoderNode(const rclcpp::NodeOptions options)
   }
   if (network_image_height_ == 0) {
     throw std::invalid_argument(
-            "[Dnn Image Encoder] Invalid network_image_height_, "
+            "[Dnn Image Encoder] Invalid network_image_height, "
             "this needs to be set per the model input requirements.");
   }
 
@@ -162,18 +169,55 @@ void DnnImageEncoderNode::preLoadGraphCallback()
     offsets);
 }
 
+uint16_t DnnImageEncoderNode::GetResizeScalar()
+{
+  // If both the network dims are same scalar integer of image dims that means all pixels can be
+  // be preserved while keeping the aspect ratio hence 1 is returned else min
+  uint16_t width_scalar = input_image_width_ / network_image_width_;
+  uint16_t height_scalar = input_image_height_ / network_image_height_;
+  return (width_scalar == height_scalar) ? 1 : std::min(width_scalar, height_scalar);
+}
+
+void DnnImageEncoderNode::CalculateResizeAndCropParams()
+{
+  const uint16_t resize_factor = enable_padding_ ? 1 : GetResizeScalar();
+  resize_out_img_width_ = network_image_width_ * resize_factor;
+  resize_out_img_height_ = network_image_height_ * resize_factor;
+}
+
 void DnnImageEncoderNode::postLoadGraphCallback()
 {
   RCLCPP_INFO(get_logger(), "In DNN Image Encoder Node postLoadGraphCallback().");
 
-  getNitrosContext().setParameterUInt64(
-    "resizer", "nvidia::isaac::tensor_ops::Resize", "output_width", network_image_width_);
-  getNitrosContext().setParameterUInt64(
-    "resizer", "nvidia::isaac::tensor_ops::Resize", "output_height", network_image_height_);
+  CalculateResizeAndCropParams();
 
-  getNitrosContext().setParameterBool(
-    "resizer", "nvidia::isaac::tensor_ops::Resize", "keep_aspect_ratio",
-    resize_mode_ != ResizeMode::kDistort);
+  getNitrosContext().setParameterUInt64(
+    "resizer", "nvidia::isaac::tensor_ops::Resize", "output_width", resize_out_img_width_);
+  getNitrosContext().setParameterUInt64(
+    "resizer", "nvidia::isaac::tensor_ops::Resize", "output_height", resize_out_img_height_);
+
+  getNitrosContext().setParameterUInt64(
+    "crop_and_resizer", "nvidia::isaac::tensor_ops::CropAndResize", "output_width",
+    network_image_width_);
+  getNitrosContext().setParameterUInt64(
+    "crop_and_resizer", "nvidia::isaac::tensor_ops::CropAndResize", "output_height",
+    network_image_height_);
+
+  getNitrosContext().setParameterUInt64(
+    "bbox", "nvidia::isaac::tensor_ops::BBoxGenerator", "image_width", resize_out_img_width_);
+  getNitrosContext().setParameterUInt64(
+    "bbox", "nvidia::isaac::tensor_ops::BBoxGenerator", "image_height", resize_out_img_height_);
+  getNitrosContext().setParameterUInt64(
+    "bbox", "nvidia::isaac::tensor_ops::BBoxGenerator", "bbox_width", network_image_width_);
+  getNitrosContext().setParameterUInt64(
+    "bbox", "nvidia::isaac::tensor_ops::BBoxGenerator", "bbox_height", network_image_height_);
+  getNitrosContext().setParameterUInt64(
+    "bbox", "nvidia::isaac::tensor_ops::BBoxGenerator", "bbox_loc_x",
+    (resize_out_img_width_ - network_image_width_) / 2);
+  getNitrosContext().setParameterUInt64(
+    "bbox", "nvidia::isaac::tensor_ops::BBoxGenerator", "bbox_loc_y",
+    (resize_out_img_height_ - network_image_height_) / 2);
+
 
   const gxf::optimizer::ComponentInfo output_comp_info = {
     "nvidia::isaac_ros::MessageRelay",  // component_type_name
@@ -189,14 +233,20 @@ void DnnImageEncoderNode::postLoadGraphCallback()
     throw std::runtime_error("Unsupported NITROS tensor type.");
   } else {
     uint64_t block_size = calculate_image_size(
-      image_type->second, network_image_width_, network_image_height_);
-
-    RCLCPP_DEBUG(
-      get_logger(), "postLoadGraphCallback() block_size = %ld.",
-      block_size);
+      image_type->second, resize_out_img_width_, resize_out_img_height_);
 
     getNitrosContext().setParameterUInt64(
       "resizer", "nvidia::gxf::BlockMemoryPool", "block_size", block_size);
+
+    RCLCPP_DEBUG(get_logger(), "postLoadGraphCallback() resizer block_size = %ld.", block_size);
+
+    block_size = calculate_image_size(
+      image_type->second, network_image_width_, network_image_height_);
+
+    RCLCPP_DEBUG(get_logger(), "postLoadGraphCallback() block_size = %ld.", block_size);
+
+    getNitrosContext().setParameterUInt64(
+      "crop_and_resizer", "nvidia::gxf::BlockMemoryPool", "block_size", block_size);
     getNitrosContext().setParameterUInt64(
       "color_space_converter", "nvidia::gxf::BlockMemoryPool", "block_size", block_size);
     getNitrosContext().setParameterUInt64(
@@ -210,6 +260,8 @@ void DnnImageEncoderNode::postLoadGraphCallback()
     uint64_t num_blocks = std::max(static_cast<int>(num_blocks_), 40);
     getNitrosContext().setParameterUInt64(
       "resizer", "nvidia::gxf::BlockMemoryPool", "num_blocks", num_blocks);
+    getNitrosContext().setParameterUInt64(
+      "crop_and_resizer", "nvidia::gxf::BlockMemoryPool", "num_blocks", num_blocks);
     getNitrosContext().setParameterUInt64(
       "color_space_converter", "nvidia::gxf::BlockMemoryPool", "num_blocks", num_blocks);
     getNitrosContext().setParameterUInt64(

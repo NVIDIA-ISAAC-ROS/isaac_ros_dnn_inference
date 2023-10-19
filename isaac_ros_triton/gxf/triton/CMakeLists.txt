@@ -21,9 +21,13 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-fPIC -w)
 endif()
 
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+set(LAST_CMAKE_MESSAGE_LOG_LEVEL ${CMAKE_MESSAGE_LOG_LEVEL})
+set(CMAKE_MESSAGE_LOG_LEVEL ERROR)
+
 # Dependencies
 include(FetchContent)
-include(YamlCpp)
+find_package(yaml-cpp)
 find_package(GXF ${ISAAC_ROS_GXF_VERSION} MODULE REQUIRED
   COMPONENTS
   core
@@ -36,6 +40,7 @@ set(protobuf_BUILD_EXPORT OFF)
 set(protobuf_MSVC_STATIC_RUNTIME OFF)
 set(Protobuf_USE_STATIC_LIBS ON)
 set(Protobuf_BUILD_SHARED_LIBS OFF)
+
 fetchcontent_declare(
   protobuf
   GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
@@ -44,6 +49,7 @@ fetchcontent_declare(
 )
 fetchcontent_makeavailable(protobuf)
 find_package(Protobuf QUIET)
+set(CMAKE_MESSAGE_LOG_LEVEL ${LAST_CMAKE_MESSAGE_LOG_LEVEL})
 
 # Compile protocol buffers
 file(GLOB ProtoFiles "${CMAKE_CURRENT_SOURCE_DIR}/nvds/include/*.proto")

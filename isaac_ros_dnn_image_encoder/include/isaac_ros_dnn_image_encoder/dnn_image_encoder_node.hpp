@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ISAAC_ROS_DNN_ENCODERS__DNN_IMAGE_ENCODER_NODE_HPP_
-#define ISAAC_ROS_DNN_ENCODERS__DNN_IMAGE_ENCODER_NODE_HPP_
+#ifndef ISAAC_ROS_DNN_IMAGE_ENCODER__DNN_IMAGE_ENCODER_NODE_HPP_
+#define ISAAC_ROS_DNN_IMAGE_ENCODER__DNN_IMAGE_ENCODER_NODE_HPP_
 
 #include <string>
 #include <vector>
@@ -31,13 +31,6 @@ namespace isaac_ros
 namespace dnn_inference
 {
 
-enum class ResizeMode
-{
-  kDistort = 0,
-  kPad = 1,
-  kCrop = 2
-};
-
 class DnnImageEncoderNode : public nitros::NitrosNode
 {
 public:
@@ -49,17 +42,23 @@ public:
   void postLoadGraphCallback() override;
 
 private:
+  void CalculateResizeAndCropParams();
+  uint16_t GetResizeScalar();
   // Desired properties of the image
+  const uint16_t input_image_width_;
+  const uint16_t input_image_height_;
   const uint16_t network_image_width_;
   const uint16_t network_image_height_;
+  const bool enable_padding_;
   const std::vector<double> image_mean_;
   const std::vector<double> image_stddev_;
   int64_t num_blocks_;
-  const ResizeMode resize_mode_;
+  uint16_t resize_out_img_width_;
+  uint16_t resize_out_img_height_;
 };
 
 }  // namespace dnn_inference
 }  // namespace isaac_ros
 }  // namespace nvidia
 
-#endif  // ISAAC_ROS_DNN_ENCODERS__DNN_IMAGE_ENCODER_NODE_HPP_
+#endif  // ISAAC_ROS_DNN_IMAGE_ENCODER__DNN_IMAGE_ENCODER_NODE_HPP_

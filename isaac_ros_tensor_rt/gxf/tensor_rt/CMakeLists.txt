@@ -30,7 +30,7 @@ find_package(GXF ${ISAAC_ROS_GXF_VERSION} MODULE REQUIRED
     std
 )
 find_package(TENSORRT 8 MODULE REQUIRED)
-include(YamlCpp)
+find_package(yaml-cpp)
 
 # TensorRT extension
 add_library(gxf_tensor_rt SHARED

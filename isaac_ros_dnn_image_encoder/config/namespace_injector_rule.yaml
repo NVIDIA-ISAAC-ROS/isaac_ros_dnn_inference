@@ -20,6 +20,8 @@ name: DNN Image Encoder Namespace Injector Rule
 operation: namespace_injector
 body:
   components:
+    - type: nvidia::isaac::tensor_ops::CropAndResize
+      path_parameter_keys: [input_adapter, output_adapter]
     - type: nvidia::isaac::tensor_ops::ConvertColorFormat
       path_parameter_keys: [input_adapter, output_adapter]
     - type: nvidia::isaac::tensor_ops::Resize
