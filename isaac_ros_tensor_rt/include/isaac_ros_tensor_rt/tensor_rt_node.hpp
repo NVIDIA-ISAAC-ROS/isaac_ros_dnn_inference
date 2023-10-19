@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,10 +23,15 @@
 #include <vector>
 #include <memory>
 
+#include "NvInferPlugin.h"
+#include "NvOnnxConfig.h"
+#include "NvOnnxParser.h"
+
 #include "rclcpp/rclcpp.hpp"
 #include "isaac_ros_nitros/nitros_node.hpp"
 
 using StringList = std::vector<std::string>;
+
 
 namespace nvidia
 {
@@ -71,6 +76,9 @@ private:
   const int32_t max_batch_size_;
   const bool enable_fp16_;
   const bool relaxed_dimension_check_;
+  const int64_t num_blocks_;
+
+  size_t determineMaxTensorBlockSize();
 };
 
 }  // namespace dnn_inference

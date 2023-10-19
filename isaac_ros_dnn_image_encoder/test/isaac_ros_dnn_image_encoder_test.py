@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,12 +36,15 @@ from sensor_msgs.msg import Image
 def generate_test_description():
     encoder_node = ComposableNode(
         name='encoder',
-        package='isaac_ros_dnn_encoders',
+        package='isaac_ros_dnn_image_encoder',
         plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
         namespace=IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
         parameters=[{
+            'input_image_width': 1920,
+            'input_image_height': 1080,
             'network_image_width': 512,
-            'network_image_height': 512
+            'network_image_height': 512,
+            'enable_padding': True
         }],
         remappings=[('encoded_tensor', 'tensors')])
 
@@ -85,6 +88,8 @@ class IsaacROSDnnImageEncoderNodeTest(IsaacROSBaseTest):
         try:
             json_file = self.filepath / 'test_cases/pose_estimation_0/image.json'
             image = JSONConversion.load_image_from_json(json_file)
+            timestamp = self.node.get_clock().now().to_msg()
+            image.header.stamp = timestamp
 
             end_time = time.time() + TIMEOUT
             done = False
@@ -96,7 +101,11 @@ class IsaacROSDnnImageEncoderNodeTest(IsaacROSBaseTest):
                     done = True
                     break
             self.assertTrue(done, 'Appropriate output not received')
-            tensor = received_messages['tensors'].tensors[0]
+            tensor_list = received_messages['tensors']
+            tensor = tensor_list.tensors[0]
+
+            self.assertEqual(str(timestamp), str(tensor_list.header.stamp),
+                             'Timestamps do not match.')
 
             cv_image = CvBridge().imgmsg_to_cv2(image, desired_encoding='rgb8')
 

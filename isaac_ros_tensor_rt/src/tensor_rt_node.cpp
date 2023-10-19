@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+#include "NvInferPluginUtils.h"
+
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 
 #include "rclcpp/rclcpp.hpp"
@@ -87,8 +89,93 @@ const nitros::NitrosPublisherSubscriberConfigMap CONFIG_MAP = {
 };
 #pragma GCC diagnostic pop
 
+namespace
+{
 constexpr int64_t default_max_workspace_size = 67108864l;
 constexpr int64_t default_dla_core = -1;
+
+class TensorRT_Logger : public nvinfer1::ILogger
+{
+  void log(Severity severity, const char * msg) noexcept override
+  {
+    if (severity == Severity::kERROR) {
+      RCLCPP_ERROR(rclcpp::get_logger("TRT"), "TRT ERROR: %s", msg);
+    }
+  }
+} tensor_rt_logger;
+
+bool readTensorShapesFromEngine(
+  const std::string & engine_file_path, const std::vector<std::string> & binding_names,
+  std::vector<nvinfer1::Dims> & tensor_shapes,
+  std::vector<nvinfer1::DataType> & tensor_data_types)
+{
+  // Try to load TensorRT engine and query model output dimension
+  std::vector<char> plan;
+  // Open the file in binary mode and seek to the end
+  std::ifstream file(engine_file_path, std::ios::binary | std::ios::ate);
+  if (!file) {
+    return false;
+  }
+
+  // Get the size of the file and seek back to the beginning
+  const size_t size = file.tellg();
+  file.seekg(0);
+  // Reserve enough space in the output buffer and read the file contents into it
+  plan.resize(size);
+  const bool ret = static_cast<bool>(file.read(plan.data(), size));
+  file.close();
+
+  if (!ret) {
+    return false;
+  }
+
+  // Add plugins from TRT
+  if (!initLibNvInferPlugins(&tensor_rt_logger, "")) {
+    return false;
+  }
+
+  std::unique_ptr<nvinfer1::IRuntime> infer_runtime(
+    nvinfer1::createInferRuntime(tensor_rt_logger));
+  std::unique_ptr<nvinfer1::ICudaEngine> cuda_engine(
+    infer_runtime->deserializeCudaEngine(plan.data(), plan.size()));
+
+  for (uint64_t i = 0; i < binding_names.size(); i++) {
+    const std::string & binding_name = binding_names[i];
+    tensor_shapes.push_back(cuda_engine->getTensorShape(binding_name.c_str()));
+    tensor_data_types.push_back(cuda_engine->getTensorDataType(binding_name.c_str()));
+  }
+
+  return true;
+}
+
+bool readTensorShapesFromOnnx(
+  const std::string & onnx_file_path, const size_t output_count,
+  std::vector<nvinfer1::Dims> & tensor_shapes,
+  std::vector<nvinfer1::DataType> & tensor_data_types)
+{
+  std::unique_ptr<nvinfer1::IBuilder> builder(nvinfer1::createInferBuilder(tensor_rt_logger));
+  std::unique_ptr<nvinfer1::IBuilderConfig> builderConfig(builder->createBuilderConfig());
+  std::unique_ptr<nvinfer1::INetworkDefinition> network(builder->createNetworkV2(
+      1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+  std::unique_ptr<nvonnxparser::IParser> onnx_parser(
+    nvonnxparser::createParser(*network, tensor_rt_logger));
+  if (!onnx_parser->parseFromFile(
+      onnx_file_path.c_str(),
+      static_cast<int>(nvinfer1::ILogger::Severity::kWARNING)))
+  {
+    return false;
+  }
+
+  for (uint64_t i = 0; i < output_count; i++) {
+    auto * bind_tensor = network->getOutput(i);
+    tensor_shapes.push_back(bind_tensor->getDimensions());
+    tensor_data_types.push_back(bind_tensor->getType());
+  }
+
+  return true;
+}
+
+}  // namespace
 
 TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
 : nitros::NitrosNode(options,
@@ -114,7 +201,8 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
   dla_core_(declare_parameter<int64_t>("dla_core", default_dla_core)),
   max_batch_size_(declare_parameter<int32_t>("max_batch_size", 1)),
   enable_fp16_(declare_parameter<bool>("enable_fp16", true)),
-  relaxed_dimension_check_(declare_parameter<bool>("relaxed_dimension_check", true))
+  relaxed_dimension_check_(declare_parameter<bool>("relaxed_dimension_check", true)),
+  num_blocks_(declare_parameter<int64_t>("num_blocks", 40))
 {
   RCLCPP_DEBUG(get_logger(), "[TensorRTNode] In TensorRTNode's constructor");
 
@@ -169,11 +257,81 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
   startNitrosNode();
 }
 
+size_t TensorRTNode::determineMaxTensorBlockSize()
+{
+  std::vector<nvinfer1::Dims> shapes;
+  std::vector<nvinfer1::DataType> data_types;
+
+  const auto & tensor_names = output_binding_names_;
+
+  // Read tensor information from engine or ONNX file.
+  if (readTensorShapesFromEngine(engine_file_path_, tensor_names, shapes, data_types)) {
+    RCLCPP_INFO(
+      get_logger(), "Read tensor shape information from TRT Model Engine: %s",
+      engine_file_path_.c_str());
+  } else if (readTensorShapesFromOnnx(model_file_path_, tensor_names.size(), shapes, data_types)) {
+    RCLCPP_INFO(
+      get_logger(), "Read tensor shape information from ONNX file: %s",
+      model_file_path_.c_str());
+  } else {
+    RCLCPP_ERROR(
+      get_logger(),
+      "Unable to read tensor shape info from TRT Model Engine or from ONNX file.");
+    return 0;
+  }
+
+  // Calculate maximum number of bytes needed for any single output tensor.
+  size_t max_tensor_size_bytes = 1;
+  for (uint64_t i = 0; i < shapes.size(); i++) {
+    const auto & shape = shapes[i];
+    const auto data_type = data_types[i];
+
+    uint64_t tensor_element_count = 1;
+    for (int j = 0; j < shape.nbDims; j++) {
+      tensor_element_count *= std::max(shape.d[j], 1);
+    }
+
+    uint64_t bytes_per_element;
+    switch (data_type) {
+      case nvinfer1::DataType::kINT8:  bytes_per_element = sizeof(int8_t); break;
+      case nvinfer1::DataType::kFLOAT: bytes_per_element = sizeof(float_t); break;
+      case nvinfer1::DataType::kINT32: bytes_per_element = sizeof(int32_t); break;
+
+      // Fallback to max size of 8 bytes (64 bits) for other types
+      default: bytes_per_element = sizeof(size_t);
+    }
+
+    const size_t tensor_size_bytes = tensor_element_count * bytes_per_element;
+    max_tensor_size_bytes = std::max(max_tensor_size_bytes, tensor_size_bytes);
+  }
+
+  return max_tensor_size_bytes;
+}
+
+
 void TensorRTNode::postLoadGraphCallback()
 {
   RCLCPP_INFO(get_logger(), "In TensorRTNode postLoadGraphCallback().");
 
-  // Forward TensorRT inference Parameters
+  uint64_t block_size = determineMaxTensorBlockSize();
+  if (!block_size) {
+    block_size = default_max_workspace_size;
+    RCLCPP_WARN(
+      get_logger(), "Failed to get block size from model, set to the default size: %ld.",
+      default_max_workspace_size);
+  }
+  getNitrosContext().setParameterUInt64(
+    TENSOR_RT_ENTITY_NAME, "nvidia::gxf::BlockMemoryPool", "block_size", block_size);
+
+  const uint64_t output_num_blocks = output_tensor_names_.size() * num_blocks_;
+  getNitrosContext().setParameterUInt64(
+    TENSOR_RT_ENTITY_NAME, "nvidia::gxf::BlockMemoryPool", "num_blocks", output_num_blocks);
+
+  RCLCPP_INFO(
+    get_logger(), "Tensors %ld bytes, num outputs %ld x tensors per output %ld = %ld blocks",
+    block_size, num_blocks_, output_tensor_names_.size(), output_num_blocks);
+
+
   if (!force_engine_update_ && model_file_path_.empty()) {
     getNitrosContext().setParameterStr(
       TENSOR_RT_ENTITY_NAME, TENSOR_RT_COMPONENT_TYPE, "model_file_path",

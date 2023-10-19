@@ -75,14 +75,6 @@ components:
   parameters:
     transmitter: data_transmitter_resizer
     min_size: 1
-- name: data_transmitter_compositor
-  type: nvidia::gxf::DoubleBufferTransmitter
-  parameters:
-    capacity: 1
-- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
-  parameters:
-    transmitter: data_transmitter_compositor
-    min_size: 1
 ---
 name: resizer
 components:
@@ -118,6 +110,83 @@ components:
     border_type: "zero"
     keep_aspect_ratio: true
     receiver: data_receiver
+    transmitter: data_transmitter
+    pool: allocator
+    input_adapter: global/adapter_video_buffer
+    output_adapter: global/adapter_video_buffer
+    output_name: "image"
+---
+name: bbox
+components:
+- name: data_transmitter
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+      capacity: 12
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter
+    min_size: 1
+- name: allocator
+  type: nvidia::gxf::BlockMemoryPool
+  parameters:
+    storage_type: 0
+    block_size: 32
+    num_blocks: 40
+- type: nvidia::isaac::tensor_ops::BBoxGenerator
+  parameters:
+    image_width: 0
+    image_height: 0
+    bbox_width: 0
+    bbox_height: 0
+    bbox_loc_x: 0
+    bbox_loc_y: 0
+    bbox_count: 1
+    pool: allocator
+    transmitter: data_transmitter
+---
+name: crop_and_resizer
+components:
+- name: data_receiver
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: data_receiver
+    min_size: 1
+- name: bbox_receiver
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 12
+    policy: 0
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: bbox_receiver
+    min_size: 1
+- name: data_transmitter
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 12
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: data_transmitter
+    min_size: 1
+- name: allocator
+  type: nvidia::gxf::BlockMemoryPool
+  parameters:
+    storage_type: 1
+    block_size: 1566720
+    num_blocks: 40
+- name: crop_and_resize_operator
+  type: nvidia::isaac::tensor_ops::CropAndResize
+  parameters:
+    output_width: 0
+    output_height: 0
+    interp_type: "linear"
+    keep_aspect_ratio: true
+    receiver: data_receiver
+    receiver_bbox: bbox_receiver
     transmitter: data_transmitter
     pool: allocator
     input_adapter: global/adapter_video_buffer
@@ -258,6 +327,10 @@ components:
     storage_type: 1
     block_size: 6266880
     num_blocks: 40
+- type: nvidia::gxf::MemoryAvailableSchedulingTerm
+  parameters:
+    allocator: allocator
+    min_blocks: 1
 - name: reshape_operator
   type: nvidia::isaac::tensor_ops::Reshape
   parameters:
@@ -269,47 +342,12 @@ components:
     output_name: "input_tensor"
     output_shape: []
 ---
-name: compositor
-components:
-- name: data_receiver_interleaved_to_planar
-  type: nvidia::gxf::DoubleBufferReceiver
-  parameters:
-    capacity: 1
-    policy: 0
-- type: nvidia::gxf::MessageAvailableSchedulingTerm
-  parameters:
-    receiver: data_receiver_interleaved_to_planar
-    min_size: 1
-- name: data_receiver_timestamp
-  type: nvidia::gxf::DoubleBufferReceiver
-  parameters:
-    capacity: 1
-    policy: 0
-- type: nvidia::gxf::MessageAvailableSchedulingTerm
-  parameters:
-    receiver: data_receiver_timestamp
-    min_size: 1
-- name: data_transmitter
-  type: nvidia::gxf::DoubleBufferTransmitter
-  parameters:
-    capacity: 1
-- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
-  parameters:
-    transmitter: data_transmitter
-    min_size: 1
-- name: compositor
-  type: nvidia::isaac_ros::MessageCompositor
-  parameters:
-    image_rx: data_receiver_interleaved_to_planar
-    camera_model_rx: data_receiver_timestamp
-    tx: data_transmitter
----
 name: sink
 components:
 - name: signal
   type: nvidia::gxf::DoubleBufferReceiver
   parameters:
-    capacity: 1
+    capacity: 5
     policy: 0
 - type: nvidia::gxf::MessageAvailableSchedulingTerm
   parameters:
@@ -321,66 +359,67 @@ components:
     source: signal
 ---
 components:
-- name: edge0
+- name: edge1
   type: nvidia::gxf::Connection
   parameters:
     source: broadcaster/data_transmitter_resizer
     target: resizer/data_receiver
 ---
 components:
-- name: edge1
+- name: edge2
+  type: nvidia::gxf::Connection
+  parameters:
+    source: bbox/data_transmitter
+    target: crop_and_resizer/bbox_receiver
+---
+components:
+- name: edge3
   type: nvidia::gxf::Connection
   parameters:
     source: resizer/data_transmitter
+    target: crop_and_resizer/data_receiver
+---
+components:
+- name: edge4
+  type: nvidia::gxf::Connection
+  parameters:
+    source: crop_and_resizer/data_transmitter
     target: color_space_converter/data_receiver
 ---
 components:
-- name: edge2
+- name: edge5
   type: nvidia::gxf::Connection
   parameters:
     source: color_space_converter/data_transmitter
     target: normalizer/data_receiver
 ---
 components:
-- name: edge3
+- name: edge6
   type: nvidia::gxf::Connection
   parameters:
     source: normalizer/data_transmitter
     target: interleaved_to_planar/data_receiver
 ---
 components:
-- name: edge4
+- name: edge7
   type: nvidia::gxf::Connection
   parameters:
     source: interleaved_to_planar/data_transmitter
     target: reshaper/data_receiver
 ---
 components:
-- name: edge5
+- name: edge8
   type: nvidia::gxf::Connection
   parameters:
     source: reshaper/data_transmitter
-    target: compositor/data_receiver_interleaved_to_planar
----
-components:
-- name: edge6
-  type: nvidia::gxf::Connection
-  parameters:
-    source: broadcaster/data_transmitter_compositor
-    target: compositor/data_receiver_timestamp
----
-components:
-- name: edge7
-  type: nvidia::gxf::Connection
-  parameters:
-    source: compositor/data_transmitter
     target: sink/signal
 ---
 components:
-- type: nvidia::gxf::GreedyScheduler
+- type: nvidia::gxf::MultiThreadScheduler
   parameters:
     clock: clock
     stop_on_deadlock: false
-    check_recession_period_us: 100
+    check_recession_period_ms: 0.05
+    worker_thread_number: 2
 - name: clock
   type: nvidia::gxf::RealtimeClock
