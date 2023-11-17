@@ -62,6 +62,10 @@ components:
     force_engine_update: true
     verbose: true
     clock: utils/clock
+- type: nvidia::gxf::MemoryAvailableSchedulingTerm
+  parameters:
+    allocator: pool
+    min_blocks: 1
 ---
 name: cuda_stream_sync
 components:
