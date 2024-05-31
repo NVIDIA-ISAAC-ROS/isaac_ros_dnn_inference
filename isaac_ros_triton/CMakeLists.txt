@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,9 +22,6 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-execute_process(COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
-message( STATUS "Architecture: ${ARCHITECTURE}" )
-
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
@@ -32,19 +29,11 @@ ament_auto_find_build_dependencies()
 ament_auto_add_library(triton_node SHARED src/triton_node.cpp)
 rclcpp_components_register_nodes(triton_node "nvidia::isaac_ros::dnn_inference::TritonNode")
 set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TritonNode;$<TARGET_FILE:triton_node>\n")
-
-### Install extensions built from source
-
-# Triton + dependencies
-add_subdirectory(gxf/triton)
-install(TARGETS gxf_triton_ext DESTINATION share/${PROJECT_NAME}/gxf/triton/)
-if( ${ARCHITECTURE} STREQUAL "x86_64" )
-  set(ARCH_GXF_PATH "gxf_x86_64_cuda_11_8")
-  elseif( ${ARCHITECTURE} STREQUAL "aarch64" )
-  set(ARCH_GXF_PATH "gxf_jetpack502")
-endif()
-install(DIRECTORY gxf/triton/nvds/lib/${ARCH_GXF_PATH}/
-        DESTINATION share/${PROJECT_NAME}/gxf/triton)
+set_target_properties(triton_node PROPERTIES
+  BUILD_WITH_INSTALL_RPATH TRUE
+  BUILD_RPATH_USE_ORIGIN TRUE
+  INSTALL_RPATH_USE_LINK_PATH TRUE
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

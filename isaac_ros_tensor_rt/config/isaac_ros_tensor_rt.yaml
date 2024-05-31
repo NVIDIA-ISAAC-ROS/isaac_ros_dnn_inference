@@ -1,0 +1,58 @@
+%YAML 1.2
+# Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+---
+id: [0xd43f23e4b9bf11eb, 0x9d182b7be630552b]
+name: TensorRTExtension
+version: 2.0.0
+components:
+  - id: [0x06a7f0e0b9c011eb, 0x8cd623c9c2070107]
+    type: nvidia::gxf::TensorRtInference
+    input_output_groups:
+      - input_keys: [rx]
+        output_keys: [tx]
+        input_format_keys: []
+        output_format_keys: []
+        supported_formats:
+          - platforms: [any]
+            details:
+              - input_formats: [nitros_tensor_list_nchw]
+                output_formats: [nitros_tensor_list_nchw]
+                costs:
+                  throughput: 10bytes/s
+                  latency: 10ms
+                  power: 100J
+                  accuracy: 100%
+              - input_formats: [nitros_tensor_list_nhwc]
+                output_formats: [nitros_tensor_list_nhwc]
+                costs:
+                  throughput: 10bytes/s
+                  latency: 10ms
+                  power: 100J
+                  accuracy: 100%
+              - input_formats: [nitros_tensor_list_nchw_rgb_f32]
+                output_formats: [nitros_tensor_list_nhwc_rgb_f32]
+                costs:
+                  throughput: 10bytes/s
+                  latency: 10ms
+                  power: 100J
+                  accuracy: 100%
+              - input_formats: [nitros_tensor_list_nchw_bgr_f32]
+                output_formats: [nitros_tensor_list_nhwc_bgr_f32]
+                costs:
+                  throughput: 10bytes/s
+                  latency: 10ms
+                  power: 100J
+                  accuracy: 100%
+              - input_formats: [nitros_tensor_list_nchw_rgb_f32]
+                output_formats: [nitros_tensor_list_nchw_rgb_f32]
+                costs:
+                  throughput: 10bytes/s
+                  latency: 10ms
+                  power: 100J
+                  accuracy: 100%
