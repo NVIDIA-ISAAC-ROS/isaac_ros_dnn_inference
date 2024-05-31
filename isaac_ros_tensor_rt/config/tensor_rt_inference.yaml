@@ -22,7 +22,6 @@ components:
   type: nvidia::gxf::DoubleBufferTransmitter
   parameters:
     capacity: 12
-    policy: 0
 - type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
   parameters:
     transmitter: tx
@@ -35,7 +34,6 @@ components:
   type: nvidia::gxf::DoubleBufferReceiver
   parameters:
     capacity: 12
-    policy: 0
 - name: pool
   type: nvidia::gxf::BlockMemoryPool
   parameters:
@@ -56,7 +54,6 @@ components:
         - mobilenetv20_output_flatten0_reshape0
     pool: pool
     cuda_stream_pool: utils/stream
-    dummy_rx: rx
     rx: [rx]
     tx: tx
     force_engine_update: true
@@ -73,12 +70,10 @@ components:
   type: nvidia::gxf::DoubleBufferReceiver
   parameters:
     capacity: 2
-    policy: 0
 - name: tx
   type: nvidia::gxf::DoubleBufferTransmitter
   parameters:
     capacity: 12
-    policy: 0
 - type: nvidia::gxf::MessageAvailableSchedulingTerm
   parameters:
     receiver: rx
@@ -98,7 +93,6 @@ components:
   type: nvidia::gxf::DoubleBufferReceiver
   parameters:
     capacity: 1
-    policy: 0
 - type: nvidia::gxf::MessageAvailableSchedulingTerm
   parameters:
     receiver: signal

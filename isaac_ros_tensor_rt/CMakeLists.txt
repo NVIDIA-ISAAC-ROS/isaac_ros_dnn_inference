@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,24 +25,31 @@ endif()
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
+# Dependencies
+find_package(TENSORRT 8 MODULE REQUIRED)
+
 # TensorRTNode
 ament_auto_add_library(tensor_rt_node SHARED src/tensor_rt_node.cpp)
 target_link_libraries(tensor_rt_node TENSORRT::nvonnxparser)
 rclcpp_components_register_nodes(tensor_rt_node "nvidia::isaac_ros::dnn_inference::TensorRTNode")
 set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TensorRTNode;$<TARGET_FILE:tensor_rt_node>\n")
-
-### Install extensions built from source
-
-# TensorRT
-add_subdirectory(gxf/tensor_rt)
-install(TARGETS gxf_tensor_rt DESTINATION share/${PROJECT_NAME}/gxf/tensor_rt)
-
-### End extensions
+set_target_properties(tensor_rt_node PROPERTIES
+  BUILD_WITH_INSTALL_RPATH TRUE
+  BUILD_RPATH_USE_ORIGIN TRUE
+  INSTALL_RPATH_USE_LINK_PATH TRUE
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
+  # Add gtests
+  ament_add_gtest(tensor_rt_node_test test/tensor_rt_node_test.cpp)
+  target_link_libraries(tensor_rt_node_test tensor_rt_node)
+  target_include_directories(tensor_rt_node_test PUBLIC include/isaac_ros_tensor_rt/)
+  target_include_directories(tensor_rt_node_test PUBLIC /usr/src/googletest/googlemock/include/)
+  ament_target_dependencies(tensor_rt_node_test rclcpp)
+  ament_target_dependencies(tensor_rt_node_test isaac_ros_nitros)
 
   # The FindPythonInterp and FindPythonLibs modules are removed
   if(POLICY CMP0148)

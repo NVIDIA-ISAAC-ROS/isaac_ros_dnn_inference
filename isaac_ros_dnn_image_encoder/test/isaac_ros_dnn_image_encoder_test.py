@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,46 +19,41 @@ import os
 import pathlib
 import time
 
+
+from ament_index_python.packages import get_package_share_directory
 import cv2
 from cv_bridge import CvBridge
 from isaac_ros_tensor_list_interfaces.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest, JSONConversion
-from launch_ros.actions import ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 import pytest
 import rclpy
 
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CameraInfo, Image
 
 
 @pytest.mark.rostest
 def generate_test_description():
-    encoder_node = ComposableNode(
-        name='encoder',
-        package='isaac_ros_dnn_image_encoder',
-        plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
-        namespace=IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
-        parameters=[{
-            'input_image_width': 1920,
-            'input_image_height': 1080,
-            'network_image_width': 512,
-            'network_image_height': 512,
-            'enable_padding': True
-        }],
-        remappings=[('encoded_tensor', 'tensors')])
+    encoder_dir = get_package_share_directory('isaac_ros_dnn_image_encoder')
+    encoder_node_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [os.path.join(encoder_dir, 'launch', 'dnn_image_encoder.launch.py')]
+        ),
+        launch_arguments={
+            'input_image_width': '1920',
+            'input_image_height': '1080',
+            'network_image_width': '512',
+            'network_image_height': '512',
+            'enable_padding': 'True',
+            'tensor_output_topic': 'tensors',
+            'dnn_image_encoder_namespace': IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
+        }.items(),
+    )
 
     return IsaacROSDnnImageEncoderNodeTest.generate_test_description([
-        ComposableNodeContainer(
-            name='tensor_rt_container',
-            package='rclcpp_components',
-            executable='component_container_mt',
-            composable_node_descriptions=[encoder_node],
-            namespace=IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
-            output='screen',
-            arguments=['--ros-args', '--log-level', 'info',
-                       '--log-level', 'isaac_ros_test.encoder:=debug'],
-        )
+        encoder_node_launch,
     ])
 
 
@@ -76,10 +71,13 @@ class IsaacROSDnnImageEncoderNodeTest(IsaacROSBaseTest):
         TIMEOUT = 300
         received_messages = {}
 
-        self.generate_namespace_lookup(['image', 'tensors'])
+        self.generate_namespace_lookup(['image', 'camera_info', 'tensors'])
 
         image_pub = self.node.create_publisher(
             Image, self.namespaces['image'], self.DEFAULT_QOS)
+
+        camera_info_pub = self.node.create_publisher(
+            CameraInfo, self.namespaces['camera_info'], self.DEFAULT_QOS)
 
         # The current DOPE decoder outputs TensorList
         subs = self.create_logging_subscribers(
@@ -88,14 +86,18 @@ class IsaacROSDnnImageEncoderNodeTest(IsaacROSBaseTest):
         try:
             json_file = self.filepath / 'test_cases/pose_estimation_0/image.json'
             image = JSONConversion.load_image_from_json(json_file)
+            info_file = self.filepath / 'test_cases/pose_estimation_0/camera_info.json'
+            camera_info = JSONConversion.load_camera_info_from_json(info_file)
             timestamp = self.node.get_clock().now().to_msg()
             image.header.stamp = timestamp
+            camera_info.header = image.header
 
             end_time = time.time() + TIMEOUT
             done = False
 
             while time.time() < end_time:
                 image_pub.publish(image)
+                camera_info_pub.publish(camera_info)
                 rclpy.spin_once(self.node, timeout_sec=(0.1))
                 if 'tensors' in received_messages:
                     done = True

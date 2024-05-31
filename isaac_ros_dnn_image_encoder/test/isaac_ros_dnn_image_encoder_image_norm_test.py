@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,17 +21,18 @@ import pathlib
 import struct
 import time
 
+from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from isaac_ros_tensor_list_interfaces.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
-from launch_ros.actions import ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 import numpy as np
 
 import pytest
 import rclpy
 
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CameraInfo, Image
 
 
 DIMENSION_WIDTH = 100
@@ -40,32 +41,27 @@ DIMENSION_HEIGHT = 100
 
 @pytest.mark.rostest
 def generate_test_description():
-    encoder_node = ComposableNode(
-        name='encoder',
-        package='isaac_ros_dnn_image_encoder',
-        plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
-        namespace=IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace(),
-        parameters=[{
-            'input_image_width': DIMENSION_WIDTH,
-            'input_image_height': DIMENSION_HEIGHT,
-            'network_image_width': DIMENSION_WIDTH,
-            'network_image_height': DIMENSION_HEIGHT,
-            'image_mean': [0.5, 0.6, 0.25],
-            'image_stddev': [0.25, 0.8, 0.5]
-        }],
-        remappings=[('encoded_tensor', 'tensors')])
+    encoder_dir = get_package_share_directory('isaac_ros_dnn_image_encoder')
+    namespace = IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace()
+    encoder_node_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [os.path.join(encoder_dir, 'launch', 'dnn_image_encoder.launch.py')]
+        ),
+        launch_arguments={
+            'input_image_width': f'{DIMENSION_WIDTH}',
+            'input_image_height': f'{DIMENSION_HEIGHT}',
+            'network_image_width': f'{DIMENSION_WIDTH}',
+            'network_image_height': f'{DIMENSION_HEIGHT}',
+            'image_mean': str([0.5, 0.6, 0.25]),
+            'image_stddev': str([0.25, 0.8, 0.5]),
+            'enable_padding': 'True',
+            'tensor_output_topic': 'tensors',
+            'dnn_image_encoder_namespace': namespace,
+        }.items(),
+    )
 
     return IsaacROSDnnImageEncoderImageNormNodeTest.generate_test_description([
-        ComposableNodeContainer(
-            name='tensor_rt_container',
-            package='rclcpp_components',
-            executable='component_container_mt',
-            composable_node_descriptions=[encoder_node],
-            namespace=IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace(),
-            output='screen',
-            arguments=['--ros-args', '--log-level', 'info',
-                       '--log-level', 'isaac_ros_test.encoder:=debug'],
-        )
+        encoder_node_launch
     ])
 
 
@@ -93,10 +89,13 @@ class IsaacROSDnnImageEncoderImageNormNodeTest(IsaacROSBaseTest):
         GREEN_EXPECTED_VAL = 0.5
         BLUE_EXPECTED_VAL = 1.5
 
-        self.generate_namespace_lookup(['image', 'tensors'])
+        self.generate_namespace_lookup(['image', 'camera_info', 'tensors'])
 
         image_pub = self.node.create_publisher(
             Image, self.namespaces['image'], self.DEFAULT_QOS)
+
+        camera_info_pub = self.node.create_publisher(
+            CameraInfo, self.namespaces['camera_info'], self.DEFAULT_QOS)
 
         subs = self.create_logging_subscribers(
             [('tensors', TensorList)], received_messages)
@@ -108,11 +107,15 @@ class IsaacROSDnnImageEncoderImageNormNodeTest(IsaacROSBaseTest):
             image = CvBridge().cv2_to_imgmsg(cv_image)
             image.encoding = 'bgr8'
 
+            camera_info = CameraInfo()
+            camera_info.distortion_model = 'plumb_bob'
+
             end_time = time.time() + TIMEOUT
             done = False
 
             while time.time() < end_time:
                 image_pub.publish(image)
+                camera_info_pub.publish(camera_info)
                 rclpy.spin_once(self.node, timeout_sec=(0.1))
                 if 'tensors' in received_messages:
                     done = True

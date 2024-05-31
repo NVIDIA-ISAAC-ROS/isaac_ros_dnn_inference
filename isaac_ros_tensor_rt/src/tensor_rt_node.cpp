@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,12 +55,14 @@ const std::vector<std::pair<std::string, std::string>> EXTENSIONS = {
   {"isaac_ros_gxf", "gxf/lib/std/libgxf_std.so"},
   {"isaac_ros_gxf", "gxf/lib/cuda/libgxf_cuda.so"},
   {"isaac_ros_gxf", "gxf/lib/serialization/libgxf_serialization.so"},
-  {"isaac_ros_tensor_rt", "gxf/tensor_rt/libgxf_tensor_rt.so"}
+  {"gxf_isaac_tensor_rt", "gxf/lib/libgxf_isaac_tensor_rt.so"}
 };
 const std::vector<std::string> PRESET_EXTENSION_SPEC_NAMES = {
   "isaac_ros_tensor_rt",
 };
-const std::vector<std::string> EXTENSION_SPEC_FILENAMES = {};
+const std::vector<std::string> EXTENSION_SPEC_FILENAMES = {
+  "config/isaac_ros_tensor_rt.yaml"
+};
 const std::vector<std::string> GENERATOR_RULE_FILENAMES = {
   "config/namespace_injector_rule.yaml"
 };

@@ -21,10 +21,10 @@ SPDX-License-Identifier: Apache-2.0
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>isaac_ros_tensor_rt</name>
-  <version>2.1.0</version>
+  <version>3.0.0</version>
   <description>DNN Inference support for Isaac ROS</description>
 
-  <maintainer email="cyc@nvidia.com">CY Chen</maintainer>
+  <maintainer email="isaac-ros-maintainers@nvidia.com">Isaac ROS Maintainers</maintainer>
   <license>Apache-2.0</license>
   <url type="website">https://developer.nvidia.com/isaac-ros-gems/</url>
   <author>CY Chen</author>
@@ -42,9 +42,12 @@ SPDX-License-Identifier: Apache-2.0
 
   <build_depend>isaac_ros_common</build_depend>
 
+  <exec_depend>gxf_isaac_tensor_rt</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>isaac_ros_test</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
