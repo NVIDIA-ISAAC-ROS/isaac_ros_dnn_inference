@@ -210,20 +210,20 @@ class IsaacROSDnnImageEncoderImageResizeNodeTest(IsaacROSBaseTest):
                     # Extract 3 float values corresponding to the
                     r, g, b = extract_pixel(tensor.data, x, y)
 
-                    if(abs(r - RED_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
+                    if (abs(r - RED_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
                        and g < COLOR_MATCH_TOLERANCE and b < COLOR_MATCH_TOLERANCE):
                         red_pixel_count += 1
-                    if(abs(g - GREEN_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
+                    if (abs(g - GREEN_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
                        and r < COLOR_MATCH_TOLERANCE and b < COLOR_MATCH_TOLERANCE):
                         green_pixel_count += 1
-                    if(abs(b - BLUE_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
+                    if (abs(b - BLUE_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE
                        and r < COLOR_MATCH_TOLERANCE and g < COLOR_MATCH_TOLERANCE):
                         blue_pixel_count += 1
-                    if(abs(r - RED_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE and
+                    if (abs(r - RED_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE and
                        abs(g - GREEN_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE and
                        abs(b - BLUE_EXPECTED_VAL) < COLOR_MATCH_TOLERANCE):
                         white_pixel_count += 1
-                    if(r < COLOR_MATCH_TOLERANCE and g < COLOR_MATCH_TOLERANCE and
+                    if (r < COLOR_MATCH_TOLERANCE and g < COLOR_MATCH_TOLERANCE and
                        b < COLOR_MATCH_TOLERANCE):
                         black_pixel_count += 1
 

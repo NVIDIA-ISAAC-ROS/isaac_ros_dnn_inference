@@ -26,11 +26,11 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 # Dependencies
-find_package(TENSORRT 8 MODULE REQUIRED)
+find_package(TENSORRT 10 MODULE REQUIRED)
 
 # TensorRTNode
 ament_auto_add_library(tensor_rt_node SHARED src/tensor_rt_node.cpp)
-target_link_libraries(tensor_rt_node TENSORRT::nvonnxparser)
+target_link_libraries(tensor_rt_node TENSORRT::nvinfer TENSORRT::nvinfer_plugin TENSORRT::nvonnxparser)
 rclcpp_components_register_nodes(tensor_rt_node "nvidia::isaac_ros::dnn_inference::TensorRTNode")
 set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TensorRTNode;$<TARGET_FILE:tensor_rt_node>\n")
 set_target_properties(tensor_rt_node PROPERTIES
@@ -59,5 +59,11 @@ if(BUILD_TESTING)
   find_package(launch_testing_ament_cmake REQUIRED)
   add_launch_test(test/isaac_ros_tensor_rt_test.py TIMEOUT "300")
 endif()
+
+
+# Embed versioning information into installed files
+ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
+include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
+generate_version_info(${PROJECT_NAME})
 
 ament_auto_package(INSTALL_TO_SHARE config launch)

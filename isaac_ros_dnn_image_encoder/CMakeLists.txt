@@ -38,6 +38,13 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
+  # Gtest for dnn image encoder node
+  ament_add_gtest(dnn_image_encoder_node_test test/dnn_image_encoder_node_test.cpp)
+  target_link_libraries(dnn_image_encoder_node_test dnn_image_encoder_node)
+  target_include_directories(dnn_image_encoder_node_test PUBLIC include/isaac_ros_dnn_image_encoder/)
+  target_include_directories(dnn_image_encoder_node_test PUBLIC /usr/src/googletest/googlemock/include/)
+  ament_target_dependencies(dnn_image_encoder_node_test rclcpp)
+  ament_target_dependencies(dnn_image_encoder_node_test isaac_ros_nitros)
 
   # The FindPythonInterp and FindPythonLibs modules are removed
   if(POLICY CMP0148)
@@ -49,5 +56,11 @@ if(BUILD_TESTING)
   add_launch_test(test/isaac_ros_dnn_image_encoder_image_crop_test.py)
   add_launch_test(test/isaac_ros_dnn_image_encoder_image_norm_test.py)
 endif()
+
+
+# Embed versioning information into installed files
+ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
+include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
+generate_version_info(${PROJECT_NAME})
 
 ament_auto_package(INSTALL_TO_SHARE config launch)

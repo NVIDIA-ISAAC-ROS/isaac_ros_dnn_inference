@@ -72,6 +72,7 @@ ament_auto_add_library(image_tensor_normalize_node SHARED src/image_tensor_norma
     BUILD_RPATH_USE_ORIGIN TRUE
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+# Normalize
 ament_auto_add_library(normalize_node SHARED src/normalize_node.cpp)
   rclcpp_components_register_nodes(normalize_node
     "nvidia::isaac_ros::dnn_inference::NormalizeNode")
@@ -86,6 +87,20 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
+  # Gtest for interleaved_to_planar_node
+  ament_add_gtest(interleaved_to_planar_node_test test/interleaved_to_planar_node_test.cpp)
+  target_link_libraries(interleaved_to_planar_node_test interleaved_to_planar_node)
+  target_include_directories(interleaved_to_planar_node_test PUBLIC include/isaac_ros_tensor_proc/)
+  target_include_directories(interleaved_to_planar_node_test PUBLIC /usr/src/googletest/googlemock/include/)
+  ament_target_dependencies(interleaved_to_planar_node_test rclcpp)
+  ament_target_dependencies(interleaved_to_planar_node_test isaac_ros_nitros)
+  # Gtest for normalize_node
+  ament_add_gtest(normalize_node_test test/normalize_node_test.cpp)
+  target_link_libraries(normalize_node_test normalize_node)
+  target_include_directories(normalize_node_test PUBLIC include/isaac_ros_tensor_proc/)
+  target_include_directories(normalize_node_test PUBLIC /usr/src/googletest/googlemock/include/)
+  ament_target_dependencies(normalize_node_test rclcpp)
+  ament_target_dependencies(normalize_node_test isaac_ros_nitros)
 
   # The FindPythonInterp and FindPythonLibs modules are removed
   if(POLICY CMP0148)
@@ -101,5 +116,11 @@ if(BUILD_TESTING)
   add_launch_test(test/isaac_ros_image_tensor_normalize_test.py)
   add_launch_test(test/isaac_ros_normalize_test.py)
 endif()
+
+
+# Embed versioning information into installed files
+ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
+include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
+generate_version_info(${PROJECT_NAME})
 
 ament_auto_package(INSTALL_TO_SHARE config)

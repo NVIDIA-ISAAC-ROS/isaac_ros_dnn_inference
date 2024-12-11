@@ -16,21 +16,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <gmock/gmock.h>
-#include "tensor_rt_node.hpp"
+#include "triton_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+// Objective: to cover code lines where exceptions are thrown
+// Approach: send Invalid Arguments for node parameters to trigger the exception
 
-TEST(tensor_rt_node_test, test_engine_file_path)
+TEST(triton_node_test, test_empty_model_name)
 {
   rclcpp::init(0, nullptr);
   rclcpp::NodeOptions options;
-  options.append_parameter_override("engine_file_path", "");
+  options.append_parameter_override("model_name", "");
   EXPECT_THROW(
   {
     try {
-      nvidia::isaac_ros::dnn_inference::TensorRTNode trt_node(options);
+      nvidia::isaac_ros::dnn_inference::TritonNode triton_node(options);
     } catch (const std::invalid_argument & e) {
-      EXPECT_THAT(e.what(), testing::HasSubstr("Empty engine_file_path"));
+      EXPECT_THAT(e.what(), testing::HasSubstr("Empty model_name"));
       throw;
     } catch (const rclcpp::exceptions::InvalidParameterValueException & e) {
       EXPECT_THAT(e.what(), testing::HasSubstr("No parameter value set"));
@@ -40,16 +42,38 @@ TEST(tensor_rt_node_test, test_engine_file_path)
   rclcpp::shutdown();
 }
 
-TEST(tensor_rt_node_test, test_empty_input_tensor_names)
+TEST(triton_node_test, test_empty_model_repository_paths)
 {
   rclcpp::init(0, nullptr);
   rclcpp::NodeOptions options;
-  options.append_parameter_override("engine_file_path", "dummy_path");
-  options.append_parameter_override("input_tensor_names", std::vector<std::string>{});
+  options.append_parameter_override("model_name", "dummy_name");
   EXPECT_THROW(
   {
     try {
-      nvidia::isaac_ros::dnn_inference::TensorRTNode trt_node(options);
+      nvidia::isaac_ros::dnn_inference::TritonNode triton_node(options);
+    } catch (const std::invalid_argument & e) {
+      EXPECT_THAT(e.what(), testing::HasSubstr("Empty model_repository_paths"));
+      throw;
+    } catch (const rclcpp::exceptions::InvalidParameterValueException & e) {
+      EXPECT_THAT(e.what(), testing::HasSubstr("No parameter value set"));
+      throw;
+    }
+  }, std::invalid_argument);
+  rclcpp::shutdown();
+}
+
+TEST(triton_node_test, test_empty_input_tensor_names)
+{
+  rclcpp::init(0, nullptr);
+  rclcpp::NodeOptions options;
+  options.append_parameter_override("model_name", "dummy_name");
+  options.append_parameter_override(
+    "model_repository_paths",
+    std::vector<std::string>{"dummy_path"});
+  EXPECT_THROW(
+  {
+    try {
+      nvidia::isaac_ros::dnn_inference::TritonNode triton_node(options);
     } catch (const std::invalid_argument & e) {
       EXPECT_THAT(e.what(), testing::HasSubstr("Empty input_tensor_names"));
       throw;
@@ -61,22 +85,19 @@ TEST(tensor_rt_node_test, test_empty_input_tensor_names)
   rclcpp::shutdown();
 }
 
-TEST(tensor_rt_node_test, test_empty_input_binding_names)
+TEST(triton_node_test, test_empty_input_binding_names)
 {
   rclcpp::init(0, nullptr);
   rclcpp::NodeOptions options;
-  options.append_parameter_override("engine_file_path", "dummy_path");
+  options.append_parameter_override("model_name", "dummy_name");
+  options.append_parameter_override(
+    "model_repository_paths",
+    std::vector<std::string>{"dummy_path"});
   options.append_parameter_override("input_tensor_names", std::vector<std::string>{"dummy"});
-  options.arguments(
-  {
-    "--ros-args",
-    "-p", "engine_file_path:='dummy_path'",
-    "-p", "input_tensor_names:=['dummy_path']",
-  });
   EXPECT_THROW(
   {
     try {
-      nvidia::isaac_ros::dnn_inference::TensorRTNode trt_node(options);
+      nvidia::isaac_ros::dnn_inference::TritonNode triton_node(options);
     } catch (const std::invalid_argument & e) {
       EXPECT_THAT(e.what(), testing::HasSubstr("Empty input_binding_names"));
       throw;
@@ -88,18 +109,20 @@ TEST(tensor_rt_node_test, test_empty_input_binding_names)
   rclcpp::shutdown();
 }
 
-TEST(tensor_rt_node_test, test_empty_output_tensor_names)
+TEST(triton_node_test, test_empty_output_tensor_names)
 {
   rclcpp::init(0, nullptr);
   rclcpp::NodeOptions options;
-  options.append_parameter_override("engine_file_path", "dummy_path");
+  options.append_parameter_override("model_name", "dummy_name");
+  options.append_parameter_override(
+    "model_repository_paths",
+    std::vector<std::string>{"dummy_path"});
   options.append_parameter_override("input_tensor_names", std::vector<std::string>{"dummy"});
   options.append_parameter_override("input_binding_names", std::vector<std::string>{"dummy"});
-  options.append_parameter_override("output_binding_names", std::vector<std::string>{"dummy"});
   EXPECT_THROW(
   {
     try {
-      nvidia::isaac_ros::dnn_inference::TensorRTNode trt_node(options);
+      nvidia::isaac_ros::dnn_inference::TritonNode triton_node(options);
     } catch (const std::invalid_argument & e) {
       EXPECT_THAT(e.what(), testing::HasSubstr("Empty output_tensor_names"));
       throw;
@@ -111,18 +134,21 @@ TEST(tensor_rt_node_test, test_empty_output_tensor_names)
   rclcpp::shutdown();
 }
 
-TEST(tensor_rt_node_test, test_empty_output_binding_names)
+TEST(triton_node_test, test_empty_output_binding_names)
 {
   rclcpp::init(0, nullptr);
   rclcpp::NodeOptions options;
-  options.append_parameter_override("engine_file_path", "dummy_path");
+  options.append_parameter_override("model_name", "dummy_name");
+  options.append_parameter_override(
+    "model_repository_paths",
+    std::vector<std::string>{"dummy_path"});
   options.append_parameter_override("input_tensor_names", std::vector<std::string>{"dummy"});
   options.append_parameter_override("input_binding_names", std::vector<std::string>{"dummy"});
   options.append_parameter_override("output_tensor_names", std::vector<std::string>{"dummy"});
   EXPECT_THROW(
   {
     try {
-      nvidia::isaac_ros::dnn_inference::TensorRTNode trt_node(options);
+      nvidia::isaac_ros::dnn_inference::TritonNode triton_node(options);
     } catch (const std::invalid_argument & e) {
       EXPECT_THAT(e.what(), testing::HasSubstr("Empty output_binding_names"));
       throw;

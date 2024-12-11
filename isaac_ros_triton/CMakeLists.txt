@@ -39,6 +39,13 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
+  # Gtest for triton node
+  ament_add_gtest(triton_node_test test/triton_node_test.cpp)
+  target_link_libraries(triton_node_test triton_node)
+  target_include_directories(triton_node_test PUBLIC include/isaac_ros_triton_node/)
+  target_include_directories(triton_node_test PUBLIC /usr/src/googletest/googlemock/include/)
+  ament_target_dependencies(triton_node_test rclcpp)
+  ament_target_dependencies(triton_node_test isaac_ros_nitros)
 
   # The FindPythonInterp and FindPythonLibs modules are removed
   if(POLICY CMP0148)
@@ -49,5 +56,11 @@ if(BUILD_TESTING)
   add_launch_test(test/isaac_ros_triton_test_onnx.py TIMEOUT "300")
   add_launch_test(test/isaac_ros_triton_test_tf.py TIMEOUT "300")
 endif()
+
+
+# Embed versioning information into installed files
+ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
+include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
+generate_version_info(${PROJECT_NAME})
 
 ament_auto_package(INSTALL_TO_SHARE config launch)

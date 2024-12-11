@@ -107,6 +107,9 @@ gxf::Expected<gxf::PrimitiveType> NvInferDatatypeToTensorElementType(nvinfer1::D
     case nvinfer1::DataType::kINT32: {
       return gxf::PrimitiveType::kInt32;
     }
+    case nvinfer1::DataType::kINT64: {
+      return gxf::PrimitiveType::kInt64;
+    }
     case nvinfer1::DataType::kUINT8: {
       return gxf::PrimitiveType::kUnsigned8;
     }
@@ -307,14 +310,15 @@ gxf_result_t TensorRtInference::start() {
 
   // Deserialize the CUDA engine
   if (verbose_.get()) { GXF_LOG_INFO("Creating inference runtime."); }
-  cuda_engine_.reset(infer_runtime_->deserializeCudaEngine(plan.data(), plan.size(), NULL));
+  cuda_engine_.reset(infer_runtime_->deserializeCudaEngine(plan.data(), plan.size()));
 
   // Debug spews
   if (verbose_.get()) {
-    GXF_LOG_INFO("Number of CUDA bindings: %d", cuda_engine_->getNbBindings());
-    for (int i = 0; i < cuda_engine_->getNbBindings(); ++i) {
-      GXF_LOG_INFO("CUDA binding No.%d: name %s Format %s", i, cuda_engine_->getBindingName(i),
-                    cuda_engine_->getBindingFormatDesc(i));
+    GXF_LOG_INFO("Number of CUDA bindings: %d", cuda_engine_->getNbIOTensors());
+    for (int32_t i = 0; i < cuda_engine_->getNbIOTensors(); ++i) {
+      GXF_LOG_INFO("Tensor name %s: Format %s",
+                    cuda_engine_->getIOTensorName(i),
+                    cuda_engine_->getTensorFormatDesc(cuda_engine_->getIOTensorName(i)));
     }
   }
 
@@ -322,60 +326,40 @@ gxf_result_t TensorRtInference::start() {
   const uint64_t input_number = input_tensor_names_.get().size();
   const uint64_t output_number = output_tensor_names_.get().size();
   const int64_t total_bindings_number = input_number + output_number;
-  if (cuda_engine_->getNbBindings() != static_cast<int>(total_bindings_number)) {
+  if (cuda_engine_->getNbIOTensors() != static_cast<int>(total_bindings_number)) {
     GXF_LOG_ERROR(
         "Numbers of CUDA bindings mismatch: configured for %lu vs model requires %d. "
         "Please check TensorRTInference codelet configuration.\n",
-        total_bindings_number, cuda_engine_->getNbBindings());
+        total_bindings_number, cuda_engine_->getNbIOTensors());
     return GXF_ARGUMENT_INVALID;
   }
 
   // Creates cuda execution context
   cuda_execution_ctx_.reset(cuda_engine_->createExecutionContext());
 
-  // Allocates CUDA buffer pointers for binding to be populated in tick()
-  cuda_buffers_.resize(input_tensor_names_.get().size() + output_tensor_names_.get().size(),
-                       nullptr);
-
   // Keeps record of input bindings
   binding_infos_.clear();
   for (uint64_t j = 0; j < input_number; ++j) {
     const std::string& tensor_name = input_tensor_names_.get()[j];
     const std::string& binding_name = input_binding_names_.get()[j];
-
-    const int32_t binding_index = cuda_engine_->getBindingIndex(binding_name.c_str());
-    if (binding_index == -1) {
-      GXF_LOG_ERROR("Failed to get binding index for input %s in model %s", binding_name.c_str(),
-                    engine_file_path_.get().c_str());
-      return GXF_FAILURE;
-    }
-
-    if (binding_index >= static_cast<int>(cuda_buffers_.size())) {
-      GXF_LOG_ERROR("Binding index for input %s is out of range in model %s.", binding_name.c_str(),
-                    engine_file_path_.get().c_str());
-      return GXF_FAILURE;
-    }
-
     // Checks element type
     const auto maybe_element_type =
-        NvInferDatatypeToTensorElementType(cuda_engine_->getBindingDataType(binding_index));
+        NvInferDatatypeToTensorElementType(cuda_engine_->getTensorDataType(binding_name.c_str()));
     if (!maybe_element_type) {
-      GXF_LOG_ERROR("Unsupported element type for binding input %s on index %d. ",
-                    binding_name.c_str(), binding_index);
+      GXF_LOG_ERROR("Unsupported element type for binding input %s", binding_name.c_str());
       return maybe_element_type.error();
     }
 
     // Keeps binding info
-    const auto& dims = cuda_engine_->getBindingDimensions(binding_index);
+    const auto& dims = cuda_engine_->getTensorShape(binding_name.c_str());
     binding_infos_[tensor_name] =
-        BindingInfo{binding_index, static_cast<uint32_t>(dims.nbDims), binding_name,
-                    maybe_element_type.value(), Dims2Dimensions(dims)};
+        BindingInfo{static_cast<uint32_t>(dims.nbDims), binding_name, maybe_element_type.value(),
+                    Dims2Dimensions(dims)};
 
     // Debug spew
     if (verbose_.get()) {
       GXF_LOG_INFO(
-          "Input Tensor %s:%s index %d Dimensions %s.", tensor_name.c_str(), binding_name.c_str(),
-          binding_index,
+          "Input Tensor %s:%s Dimensions %s.", tensor_name.c_str(), binding_name.c_str(),
           FormatDims(binding_infos_[tensor_name].dimensions, binding_infos_[tensor_name].rank)
               .c_str());
     }
@@ -385,37 +369,23 @@ gxf_result_t TensorRtInference::start() {
   for (uint64_t j = 0; j < output_number; ++j) {
     const std::string& tensor_name = output_tensor_names_.get()[j];
     const std::string& binding_name = output_binding_names_.get()[j];
-
-    const int32_t binding_index = cuda_engine_->getBindingIndex(binding_name.c_str());
-    if (binding_index == -1) {
-      GXF_LOG_ERROR("Failed to get binding index for output %s", binding_name.c_str());
-      return GXF_FAILURE;
-    }
-    if (binding_index >= static_cast<int>(cuda_buffers_.size())) {
-      GXF_LOG_ERROR("Binding index for output %s is out of range.", binding_name.c_str());
-      return GXF_FAILURE;
-    }
-
     // Checks element type
     const auto maybe_element_type =
-        NvInferDatatypeToTensorElementType(cuda_engine_->getBindingDataType(binding_index));
+        NvInferDatatypeToTensorElementType(cuda_engine_->getTensorDataType(binding_name.c_str()));
     if (!maybe_element_type) {
-      GXF_LOG_ERROR("Unsupported element type for binding output %s on index %d. ",
-                    binding_name.c_str(), binding_index);
+      GXF_LOG_ERROR("Unsupported element type for binding output %s ", binding_name.c_str());
       return maybe_element_type.error();
     }
 
     // Keeps binding info
-    const auto& dims = cuda_engine_->getBindingDimensions(binding_index);
+    const auto& dims = cuda_engine_->getTensorShape(binding_name.c_str());
     binding_infos_[tensor_name] =
-        BindingInfo{binding_index, static_cast<uint32_t>(dims.nbDims), binding_name,
-                    maybe_element_type.value(), Dims2Dimensions(dims)};
-    cuda_buffers_[binding_index] = nullptr;  // populate cuda_buffers dynamically, in tick()
+        BindingInfo{static_cast<uint32_t>(dims.nbDims), binding_name, maybe_element_type.value(),
+                    Dims2Dimensions(dims)};
 
     if (verbose_.get()) {
       GXF_LOG_INFO(
-          "Output Tensor %s:%s (%d), Dimensions: %s.", tensor_name.c_str(), binding_name.c_str(),
-          binding_index,
+          "Output Tensor %s:%s, Dimensions: %s.", tensor_name.c_str(), binding_name.c_str(),
           FormatDims(binding_infos_[tensor_name].dimensions, binding_infos_[tensor_name].rank)
               .c_str());
     }
@@ -450,7 +420,7 @@ gxf::Expected<std::vector<char>> TensorRtInference::convertModelToEngine() {
 
   // Builder Config provides options to the Builder
   NvInferHandle<nvinfer1::IBuilderConfig> builderConfig(builder->createBuilderConfig());
-  builderConfig->setMaxWorkspaceSize(max_workspace_size_);
+  builderConfig->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
 
   // Sets DLA core if provided and always fall back to GPU
   auto dla_core = dla_core_.try_get();
@@ -512,15 +482,13 @@ gxf::Expected<std::vector<char>> TensorRtInference::convertModelToEngine() {
   builderConfig->addOptimizationProfile(optimization_profile);
 
   // Creates TensorRT Engine Plan
-  NvInferHandle<nvinfer1::ICudaEngine> engine(
-      builder->buildEngineWithConfig(*network, *builderConfig));
-  if (!engine) {
+  NvInferHandle<nvinfer1::IHostMemory> model_stream(
+      builder->buildSerializedNetwork(*network, *builderConfig));
+  if (!model_stream) {
     GXF_LOG_ERROR("Failed to build TensorRT engine from model %s.", model_file_path_.get().c_str());
     return gxf::Unexpected{GXF_FAILURE};
   }
-
-  NvInferHandle<nvinfer1::IHostMemory> model_stream(engine->serialize());
-  if (!model_stream || model_stream->size() == 0 || model_stream->data() == nullptr) {
+  if (model_stream->size() == 0 || model_stream->data() == nullptr) {
     GXF_LOG_ERROR("Fail to serialize TensorRT Engine.");
     return gxf::Unexpected{GXF_FAILURE};
   }
@@ -536,7 +504,6 @@ gxf::Expected<std::vector<char>> TensorRtInference::convertModelToEngine() {
 gxf_result_t TensorRtInference::stop() {
   cuda_execution_ctx_ = nullptr;
   cuda_engine_ = nullptr;
-  cuda_buffers_.clear();
 
   auto result = cudaEventDestroy(cuda_event_consumed_);
   if (cudaSuccess != result) {
@@ -609,10 +576,12 @@ gxf_result_t TensorRtInference::tick() {
           binding_rank_matched++;
           continue;
         }
+
         if (shape.dimension(shape_rank_matched) == 1) {
           shape_rank_matched++;
           continue;
         }
+
         if (binding_info.dimensions[binding_rank_matched] == 1) {
           binding_rank_matched++;
           continue;
@@ -654,14 +623,15 @@ gxf_result_t TensorRtInference::tick() {
     }
 
     // Updates the latest dimension of input tensor
-    if (!cuda_execution_ctx_->setBindingDimensions(binding_info.index, dims)) {
+    if (!cuda_execution_ctx_->setInputShape(binding_info.binding_name.c_str(), dims)) {
       GXF_LOG_ERROR("Failed to update input binding %s dimensions.",
                     binding_info.binding_name.c_str());
       return GXF_FAILURE;
     }
 
     // Binds input tensor buffer
-    cuda_buffers_[binding_info.index] = maybe_tensor.value()->pointer();
+    cuda_execution_ctx_->setTensorAddress(binding_info.binding_name.c_str(),
+                                          maybe_tensor.value()->pointer());
   }
 
   // Creates result message entity
@@ -679,11 +649,13 @@ gxf_result_t TensorRtInference::tick() {
 
     // Queries binding dimension from context and allocates tensor accordingly
     const auto& binding_info = binding_infos_[tensor_name];
-    const auto binding_dims = cuda_engine_->getBindingDimensions(binding_info.index);
+    const auto binding_dims = cuda_engine_->getTensorShape(binding_info.binding_name.c_str());
 
     auto dimensions = Dims2Dimensions(binding_dims);
     for (int i = 0; i < binding_dims.nbDims; i++) {
-      if (dimensions[i] < 0) { dimensions[i] = max_batch_size_.get(); }
+      if (dimensions[i] < 0) {
+        dimensions[i] = max_batch_size_.get();
+      }
     }
     gxf::Shape shape{dimensions, binding_info.rank};
 
@@ -696,7 +668,8 @@ gxf_result_t TensorRtInference::tick() {
     }
 
     // Allocates gpu buffer for output tensors
-    cuda_buffers_[binding_info.index] = maybe_result_tensor.value()->pointer();
+    cuda_execution_ctx_->setTensorAddress(binding_info.binding_name.c_str(),
+                                          maybe_result_tensor.value()->pointer());
   }
 
   auto maybe_stream_id = result_message.add<gxf::CudaStreamId>("TensorRTCuStream");
@@ -708,8 +681,7 @@ gxf_result_t TensorRtInference::tick() {
   GXF_ASSERT(maybe_stream_id.value()->stream_cid != kNullUid, "Internal error: stream_cid is null");
 
   // Runs inference on specified CUDA stream
-  if (!cuda_execution_ctx_->enqueueV2(cuda_buffers_.data(), cached_cuda_stream_,
-                                      &cuda_event_consumed_)) {
+  if (!cuda_execution_ctx_->enqueueV3(cached_cuda_stream_)) {
     GXF_LOG_ERROR("TensorRT task enqueue for engine %s failed.", engine_file_path_.get().c_str());
     return GXF_FAILURE;
   }
@@ -723,7 +695,7 @@ gxf_result_t TensorRtInference::tick() {
   }
 
   // Record the job and proceed with execution
-  auto maybe_event = result_message.add<CudaEvent>("Infer complete event");
+  auto maybe_event = result_message.add<CudaEvent>("GXF_TRT_INFER_COMPLETE");
   auto& event = maybe_event.value();
   auto ret = event->initWithEvent(cuda_event_done, device_id_);
   if (!ret) {
