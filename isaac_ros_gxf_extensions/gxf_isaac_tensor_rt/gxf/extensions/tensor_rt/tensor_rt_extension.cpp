@@ -25,7 +25,7 @@ extern "C" {
 GXF_EXT_FACTORY_BEGIN()
 
 GXF_EXT_FACTORY_SET_INFO(0xd43f23e4b9bf11eb, 0x9d182b7be630552b, "TensorRTExtension", "TensorRT",
-                         "Nvidia", "2.5.0", "LICENSE");
+                         "Nvidia", "2.7.0", "LICENSE");
 
 GXF_EXT_FACTORY_ADD(0x06a7f0e0b9c011eb, 0x8cd623c9c2070107, nvidia::gxf::TensorRtInference,
                     nvidia::gxf::Codelet,

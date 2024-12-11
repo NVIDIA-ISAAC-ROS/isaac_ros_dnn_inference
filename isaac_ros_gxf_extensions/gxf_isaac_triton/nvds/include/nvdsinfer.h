@@ -83,7 +83,9 @@ typedef enum
   /** Specifies INT8 format. */
   INT8 = 2,
   /** Specifies INT32 format. */
-  INT32 = 3
+  INT32 = 3,
+  /** Specifies INT64 format. */
+  INT64 = 4
 } NvDsInferDataType;
 
 /**

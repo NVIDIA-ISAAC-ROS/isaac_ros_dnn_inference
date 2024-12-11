@@ -23,6 +23,7 @@
 
 #include "NvInferPluginUtils.h"
 
+#include "isaac_ros_common/qos.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 
 #include "rclcpp/rclcpp.hpp"
@@ -208,6 +209,22 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
 {
   RCLCPP_DEBUG(get_logger(), "[TensorRTNode] In TensorRTNode's constructor");
 
+  // This function sets the QoS parameter for publishers and subscribers setup by this NITROS node
+  rclcpp::QoS input_qos_ = ::isaac_ros::common::AddQosParameter(
+    *this, "DEFAULT",
+    "input_qos");
+  rclcpp::QoS output_qos_ = ::isaac_ros::common::AddQosParameter(
+    *this, "DEFAULT",
+    "output_qos");
+  for (auto & config : config_map_) {
+    if (config.second.topic_name == INPUT_TOPIC_NAME) {
+      config.second.qos = input_qos_;
+    }
+    if (config.second.topic_name == OUTPUT_TOPIC_NAME) {
+      config.second.qos = output_qos_;
+    }
+  }
+
   if (engine_file_path_.empty()) {
     throw std::invalid_argument(
             "[TensorRTNode] Empty engine_file_path_, "
@@ -290,7 +307,7 @@ size_t TensorRTNode::determineMaxTensorBlockSize()
 
     uint64_t tensor_element_count = 1;
     for (int j = 0; j < shape.nbDims; j++) {
-      tensor_element_count *= std::max(shape.d[j], 1);
+      tensor_element_count *= std::max(shape.d[j], 1L);
     }
 
     uint64_t bytes_per_element;

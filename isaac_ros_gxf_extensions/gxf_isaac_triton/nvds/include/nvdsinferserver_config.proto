@@ -163,6 +163,9 @@ message BackendParams {
    * Default: MEMORY_TYPE_DEFAULT, it is Triton preferred memory type.
    */
   MemoryType output_mem_type = 5;
+
+  /** disable warmup */
+  bool disable_warmup = 6;
 }
 
 /** extrac controls */

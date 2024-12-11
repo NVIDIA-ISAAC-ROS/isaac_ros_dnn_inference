@@ -68,17 +68,13 @@ class TensorRtInference : public gxf::Codelet {
 
  private:
   // Helper deleter to call destroy while destroying the cuda objects
+
+  // unique_ptr
   template <typename T>
-  struct DeleteFunctor {
-    inline void operator()(void* ptr) { reinterpret_cast<T*>(ptr)->destroy(); }
-  };
-  // unique_ptr using custom Delete Functor above
-  template <typename T>
-  using NvInferHandle = std::unique_ptr<T, DeleteFunctor<T>>;
+  using NvInferHandle = std::unique_ptr<T>;
 
   // To cache binding info for tensors
   typedef struct {
-    int32_t index;
     uint32_t rank;
     std::string binding_name;
     gxf::PrimitiveType element_type;
@@ -118,7 +114,6 @@ class TensorRtInference : public gxf::Codelet {
   NvInferHandle<nvinfer1::ICudaEngine> cuda_engine_;
 
   gxf::Handle<gxf::CudaStream> cuda_stream_;
-  std::vector<void*> cuda_buffers_;
   cudaStream_t cached_cuda_stream_;
   cudaEvent_t cuda_event_consumed_;
 };

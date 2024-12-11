@@ -138,13 +138,13 @@ ImageTensorNormalizeNode::ImageTensorNormalizeNode(const rclcpp::NodeOptions opt
       this, "tensor",
       nvidia::isaac_ros::nitros::nitros_tensor_list_nhwc_rgb_f32_t::supported_type_name,
       std::bind(&ImageTensorNormalizeNode::ImageTensorNormalizeCallback, this,
-      std::placeholders::_1), nvidia::isaac_ros::nitros::NitrosStatisticsConfig{}, input_qos_)},
+      std::placeholders::_1), nvidia::isaac_ros::nitros::NitrosDiagnosticsConfig{}, input_qos_)},
   nitros_tensor_pub_{std::make_shared<
       nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
         nvidia::isaac_ros::nitros::NitrosTensorList>>(
       this, "normalized_tensor",
       nvidia::isaac_ros::nitros::nitros_tensor_list_nhwc_rgb_f32_t::supported_type_name,
-      nvidia::isaac_ros::nitros::NitrosStatisticsConfig{}, output_qos_)},
+      nvidia::isaac_ros::nitros::NitrosDiagnosticsConfig{}, output_qos_)},
   mean_param_{declare_parameter<std::vector<double>>("mean", {0.5, 0.5, 0.5})},
   stddev_param_{declare_parameter<std::vector<double>>("stddev", {0.5, 0.5, 0.5})},
   input_tensor_name_{declare_parameter<std::string>("input_tensor_name", "tensor")},

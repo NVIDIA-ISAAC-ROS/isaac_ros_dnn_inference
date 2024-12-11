@@ -43,9 +43,13 @@ def launch_setup(context, *args, **kwargs):
         context.perform_substitution(LaunchConfiguration('enable_padding'))
     )
 
+    input_qos = LaunchConfiguration('input_qos')
+    output_qos = LaunchConfiguration('output_qos')
+
     keep_aspect_ratio = LaunchConfiguration('keep_aspect_ratio')
     crop_mode = LaunchConfiguration('crop_mode')
     encoding_desired = LaunchConfiguration('encoding_desired')
+    input_encoding = LaunchConfiguration('input_encoding')
     final_tensor_name = LaunchConfiguration('final_tensor_name')
 
     image_mean = LaunchConfiguration('image_mean')
@@ -92,16 +96,33 @@ def launch_setup(context, *args, **kwargs):
                 plugin='nvidia::isaac_ros::image_proc::ResizeNode',
                 parameters=[
                     {
+                        'input_qos': input_qos,
                         'output_width': resize_image_width,
                         'output_height': resize_image_height,
                         'num_blocks': num_blocks,
                         'keep_aspect_ratio': keep_aspect_ratio,
-                        'encoding_desired': '',
+                        'encoding_desired': input_encoding,
                     }
                 ],
                 remappings=[
                     ('image', image_input_topic),
                     ('camera_info', camera_info_input_topic),
+                ],
+            ),
+            ComposableNode(
+                name='image_format_converter_node',
+                package='isaac_ros_image_proc',
+                plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
+                parameters=[
+                    {
+                        'image_width': network_image_width,
+                        'image_height': network_image_height,
+                        'encoding_desired': encoding_desired,
+                    }
+                ],
+                remappings=[
+                    ('image_raw', 'resize/image'),
+                    ('image', 'converted/image'),
                 ],
             ),
             ComposableNode(
@@ -121,26 +142,11 @@ def launch_setup(context, *args, **kwargs):
                     }
                 ],
                 remappings=[
-                    ('image', 'resize/image'),
+                    ('image', 'converted/image'),
                     ('camera_info', 'resize/camera_info'),
                 ],
             ),
-            ComposableNode(
-                name='image_format_converter_node',
-                package='isaac_ros_image_proc',
-                plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
-                parameters=[
-                    {
-                        'image_width': network_image_width,
-                        'image_height': network_image_height,
-                        'encoding_desired': encoding_desired,
-                    }
-                ],
-                remappings=[
-                    ('image_raw', 'crop/image'),
-                    ('image', 'converted/image'),
-                ],
-            ),
+
             ComposableNode(
                 name='image_to_tensor',
                 package='isaac_ros_tensor_proc',
@@ -152,7 +158,7 @@ def launch_setup(context, *args, **kwargs):
                     }
                 ],
                 remappings=[
-                    ('image', 'converted/image'),
+                    ('image', 'crop/image'),
                     ('tensor', 'image_tensor'),
                 ],
             ),
@@ -192,6 +198,7 @@ def launch_setup(context, *args, **kwargs):
                 plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
                 parameters=[
                     {
+                        'output_qos': output_qos,
                         'output_tensor_name': final_tensor_name,
                         'input_tensor_shape': [3, network_image_height, network_image_width],
                         'output_tensor_shape': [1, 3, network_image_height, network_image_width],
@@ -254,6 +261,16 @@ def generate_launch_description():
             description='Whether to enable padding or not',
         ),
         DeclareLaunchArgument(
+            'input_qos',
+            default_value='DEFAULT',
+            description='The QoS settings for the input image'
+        ),
+        DeclareLaunchArgument(
+            'output_qos',
+            default_value='DEFAULT',
+            description='The QoS settings for the output tensor'
+        ),
+        DeclareLaunchArgument(
             'num_blocks',
             default_value='40',
             description='The number of preallocated memory blocks',
@@ -267,6 +284,11 @@ def generate_launch_description():
             'crop_mode',
             default_value='CENTER',
             description='The crop mode to crop the image using',
+        ),
+        DeclareLaunchArgument(
+            'input_encoding',
+            default_value='rgb8',
+            description='The desired image format encoding',
         ),
         DeclareLaunchArgument(
             'encoding_desired',

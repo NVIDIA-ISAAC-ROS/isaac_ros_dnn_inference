@@ -27,7 +27,7 @@ ament_auto_find_build_dependencies()
 
 # Dependencies
 find_package(CUDAToolkit)
-find_package(TENSORRT 8 MODULE REQUIRED)
+find_package(TENSORRT 10 MODULE REQUIRED)
 find_package(yaml-cpp)
 
 # TensorRT extension
@@ -39,6 +39,8 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 
 target_link_libraries(${PROJECT_NAME}
   CUDA::cudart
+  TENSORRT::nvinfer
+  TENSORRT::nvinfer_plugin
   TENSORRT::nvonnxparser
   yaml-cpp
 )
@@ -53,5 +55,11 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 # Install the binary file
 install(TARGETS ${PROJECT_NAME} DESTINATION share/${PROJECT_NAME}/gxf/lib)
+
+
+# Embed versioning information into installed files
+ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
+include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
+generate_version_info(${PROJECT_NAME})
 
 ament_auto_package(INSTALL_TO_SHARE)
