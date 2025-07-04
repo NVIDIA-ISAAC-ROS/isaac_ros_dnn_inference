@@ -85,20 +85,28 @@ ament_auto_add_library(normalize_node SHARED src/normalize_node.cpp)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  # Force use of ROS2 vendor googletest to avoid version conflicts
+  set(CMAKE_IGNORE_PATH "/usr/src/googletest" ${CMAKE_IGNORE_PATH})
+  set(CMAKE_IGNORE_PATH "/usr/include/gtest" ${CMAKE_IGNORE_PATH})
+  set(CMAKE_IGNORE_PATH "/usr/include/gmock" ${CMAKE_IGNORE_PATH})
+
+  # Explicitly use ROS2 vendor googletest/gmock
+  include_directories(BEFORE /opt/ros/humble/src/gtest_vendor/include)
+  include_directories(BEFORE /opt/ros/humble/src/gmock_vendor/include)
 
   # Gtest for interleaved_to_planar_node
   ament_add_gtest(interleaved_to_planar_node_test test/interleaved_to_planar_node_test.cpp)
   target_link_libraries(interleaved_to_planar_node_test interleaved_to_planar_node)
   target_include_directories(interleaved_to_planar_node_test PUBLIC include/isaac_ros_tensor_proc/)
-  target_include_directories(interleaved_to_planar_node_test PUBLIC /usr/src/googletest/googlemock/include/)
   ament_target_dependencies(interleaved_to_planar_node_test rclcpp)
   ament_target_dependencies(interleaved_to_planar_node_test isaac_ros_nitros)
   # Gtest for normalize_node
   ament_add_gtest(normalize_node_test test/normalize_node_test.cpp)
   target_link_libraries(normalize_node_test normalize_node)
   target_include_directories(normalize_node_test PUBLIC include/isaac_ros_tensor_proc/)
-  target_include_directories(normalize_node_test PUBLIC /usr/src/googletest/googlemock/include/)
   ament_target_dependencies(normalize_node_test rclcpp)
   ament_target_dependencies(normalize_node_test isaac_ros_nitros)
 
