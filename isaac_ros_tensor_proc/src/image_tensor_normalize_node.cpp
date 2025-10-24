@@ -21,11 +21,13 @@
 #include <stdexcept>
 #include <string>
 
+#include "isaac_ros_common/cuda_stream.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_shape.hpp"
 #include "nvcv/TensorDataAccess.hpp"
+
 
 namespace nvidia
 {
@@ -151,7 +153,11 @@ ImageTensorNormalizeNode::ImageTensorNormalizeNode(const rclcpp::NodeOptions opt
   output_tensor_name_{declare_parameter<std::string>("output_tensor_name", "tensor")},
   tensor_layout_{StrToTensorLayout("HWC")}
 {
-  CheckCudaErrors(cudaStreamCreate(&stream_), __FILE__, __LINE__);
+  CHECK_CUDA_ERROR(
+    ::nvidia::isaac_ros::common::initNamedCudaStream(
+      stream_, "isaac_ros_image_tensor_normalize_node"),
+    "Error initializing CUDA stream");
+
   std::vector<float> mean_float(mean_param_.begin(), mean_param_.end());
   std::vector<float> stddev_float(stddev_param_.begin(), stddev_param_.end());
   nvcv::TensorShape::ShapeType shape{nvcv::TensorShape::ShapeType{1, 1, 1,

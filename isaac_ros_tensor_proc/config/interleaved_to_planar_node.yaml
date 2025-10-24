@@ -1,6 +1,6 @@
 %YAML 1.2
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -77,6 +77,14 @@ components:
     storage_type: 1
     block_size: 0
     num_blocks: 40
+- name: cuda_stream
+  type: nvidia::gxf::CudaStreamPool
+  parameters:
+    stream_flags: 1
+    stream_priority: 0
+    reserved_size: 1
+    max_size: 1
+    nvtx_identifier: "nitros_interleaved_to_planar_node_cuda_stream"
 - name: interleaved_to_planar_operator
   type: nvidia::isaac::tensor_ops::InterleavedToPlanar
   parameters:
@@ -86,6 +94,30 @@ components:
     input_adapter: global/adapter_rgb_f32  # nhwc
     output_adapter: global/adapter_planar_rgb_f32  # nchw
     output_name: "input_tensor"
+    stream_pool: cuda_stream
+---
+name: cuda_stream_sync
+components:
+- name: rx
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 1
+- name: tx
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 1
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: rx
+    min_size: 1
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: tx
+    min_size: 1
+- type: nvidia::gxf::CudaStreamSync
+  parameters:
+    rx: rx
+    tx: tx
 ---
 name: sink
 components:
@@ -106,6 +138,10 @@ components:
 - type: nvidia::gxf::Connection
   parameters:
     source: interleaved_to_planar/data_transmitter
+    target: cuda_stream_sync/rx
+- type: nvidia::gxf::Connection
+  parameters:
+    source: cuda_stream_sync/tx
     target: sink/signal
 ---
 name: utils
@@ -117,6 +153,7 @@ components:
     clock: clock
     stop_on_deadlock: false
     worker_thread_number: 2
+    worker_thread_name_id: "interleaved_to_planar_node"
 - type: nvidia::gxf::JobStatistics
   parameters:
     clock: clock

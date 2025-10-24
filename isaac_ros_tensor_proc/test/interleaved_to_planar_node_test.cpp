@@ -16,7 +16,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <gmock/gmock.h>
-#include "interleaved_to_planar_node.hpp"
+#include "isaac_ros_tensor_proc/interleaved_to_planar_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 // Objective: to cover code lines where exceptions are thrown

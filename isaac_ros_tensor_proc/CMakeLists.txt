@@ -83,6 +83,17 @@ ament_auto_add_library(normalize_node SHARED src/normalize_node.cpp)
     BUILD_RPATH_USE_ORIGIN TRUE
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+# Tensor Pair Sync
+ament_auto_add_library(tensor_pair_sync_node SHARED src/tensor_pair_sync_node.cpp)
+  rclcpp_components_register_nodes(tensor_pair_sync_node
+  "nvidia::isaac_ros::dnn_inference::TensorPairSyncNode")
+  set(node_plugins
+  "${node_plugins}nvidia::isaac_ros::dnn_inference::TensorPairSyncNode;$<TARGET_FILE:tensor_pair_sync_node>\n")
+  set_target_properties(tensor_pair_sync_node PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    BUILD_RPATH_USE_ORIGIN TRUE
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
@@ -94,19 +105,19 @@ if(BUILD_TESTING)
   set(CMAKE_IGNORE_PATH "/usr/include/gmock" ${CMAKE_IGNORE_PATH})
 
   # Explicitly use ROS2 vendor googletest/gmock
-  include_directories(BEFORE /opt/ros/humble/src/gtest_vendor/include)
-  include_directories(BEFORE /opt/ros/humble/src/gmock_vendor/include)
+  include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gtest_vendor/include)
+  include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gmock_vendor/include)
 
   # Gtest for interleaved_to_planar_node
   ament_add_gtest(interleaved_to_planar_node_test test/interleaved_to_planar_node_test.cpp)
   target_link_libraries(interleaved_to_planar_node_test interleaved_to_planar_node)
-  target_include_directories(interleaved_to_planar_node_test PUBLIC include/isaac_ros_tensor_proc/)
+  target_include_directories(interleaved_to_planar_node_test PUBLIC include/)
   ament_target_dependencies(interleaved_to_planar_node_test rclcpp)
   ament_target_dependencies(interleaved_to_planar_node_test isaac_ros_nitros)
   # Gtest for normalize_node
   ament_add_gtest(normalize_node_test test/normalize_node_test.cpp)
   target_link_libraries(normalize_node_test normalize_node)
-  target_include_directories(normalize_node_test PUBLIC include/isaac_ros_tensor_proc/)
+  target_include_directories(normalize_node_test PUBLIC include/)
   ament_target_dependencies(normalize_node_test rclcpp)
   ament_target_dependencies(normalize_node_test isaac_ros_nitros)
 
@@ -118,9 +129,9 @@ if(BUILD_TESTING)
   find_package(launch_testing_ament_cmake REQUIRED)
   add_launch_test(test/isaac_ros_interleaved_to_planar_test.py)
   add_launch_test(test/isaac_ros_reshape_test.py)
-  add_launch_test(test/isaac_ros_image_to_tensor.py)
-  add_launch_test(test/isaac_ros_image_to_tensor_no_scale.py)
-  add_launch_test(test/isaac_ros_image_to_tensor_no_scale_float.py)
+  add_launch_test(test/isaac_ros_image_to_tensor_test.py)
+  add_launch_test(test/isaac_ros_image_to_tensor_no_scale_test.py)
+  add_launch_test(test/isaac_ros_image_to_tensor_no_scale_float_test.py)
   add_launch_test(test/isaac_ros_image_tensor_normalize_test.py)
   add_launch_test(test/isaac_ros_normalize_test.py)
 endif()

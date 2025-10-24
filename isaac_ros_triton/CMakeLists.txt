@@ -46,13 +46,13 @@ if(BUILD_TESTING)
   set(CMAKE_IGNORE_PATH "/usr/include/gmock" ${CMAKE_IGNORE_PATH})
 
   # Explicitly use ROS2 vendor googletest/gmock
-  include_directories(BEFORE /opt/ros/humble/src/gtest_vendor/include)
-  include_directories(BEFORE /opt/ros/humble/src/gmock_vendor/include)
+  include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gtest_vendor/include)
+  include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gmock_vendor/include)
 
   # Gtest for triton node
   ament_add_gtest(triton_node_test test/triton_node_test.cpp)
   target_link_libraries(triton_node_test triton_node)
-  target_include_directories(triton_node_test PUBLIC include/isaac_ros_triton_node/)
+  target_include_directories(triton_node_test PUBLIC include/)
   ament_target_dependencies(triton_node_test rclcpp)
   ament_target_dependencies(triton_node_test isaac_ros_nitros)
 
@@ -63,7 +63,6 @@ if(BUILD_TESTING)
 
   find_package(launch_testing_ament_cmake REQUIRED)
   add_launch_test(test/isaac_ros_triton_test_onnx.py TIMEOUT "300")
-  add_launch_test(test/isaac_ros_triton_test_tf.py TIMEOUT "300")
 endif()
 
 

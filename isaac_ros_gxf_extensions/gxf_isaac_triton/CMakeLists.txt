@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,11 +27,11 @@ ament_auto_find_build_dependencies()
 
 # Determine the architecture
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-  set(GXF_EXT_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/gxf_jetpack61")
-  set(NVDS_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/nvds/lib/gxf_jetpack61")
-  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
-  set(GXF_EXT_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/gxf_x86_64_cuda_12_6")
-  set(NVDS_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/nvds/lib/gxf_x86_64_cuda_12_6")
+  set(GXF_EXT_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/gxf_aarch64_cuda_13_0")
+  set(NVDS_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/nvds/lib/gxf_aarch64_cuda_13_0")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+  set(GXF_EXT_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/gxf_x86_64_cuda_13_0")
+  set(NVDS_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/nvds/lib/gxf_x86_64_cuda_13_0")
 else()
   message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()

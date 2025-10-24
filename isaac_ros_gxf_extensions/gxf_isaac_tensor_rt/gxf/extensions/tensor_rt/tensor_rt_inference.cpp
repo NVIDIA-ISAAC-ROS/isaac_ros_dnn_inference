@@ -110,10 +110,12 @@ gxf::Expected<gxf::PrimitiveType> NvInferDatatypeToTensorElementType(nvinfer1::D
     case nvinfer1::DataType::kINT64: {
       return gxf::PrimitiveType::kInt64;
     }
+    case nvinfer1::DataType::kBOOL: {
+      return gxf::PrimitiveType::kUnsigned8;
+    }
     case nvinfer1::DataType::kUINT8: {
       return gxf::PrimitiveType::kUnsigned8;
     }
-//    case nvinfer1::DataType::kBOOL:
     case nvinfer1::DataType::kHALF:
     default: {
       GXF_LOG_ERROR("Unsupported DataType %d", static_cast<int>(data_type));

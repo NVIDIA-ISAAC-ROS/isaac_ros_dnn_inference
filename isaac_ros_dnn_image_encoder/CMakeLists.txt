@@ -45,13 +45,13 @@ if(BUILD_TESTING)
   set(CMAKE_IGNORE_PATH "/usr/include/gmock" ${CMAKE_IGNORE_PATH})
 
   # Explicitly use ROS2 vendor googletest/gmock
-  include_directories(BEFORE /opt/ros/humble/src/gtest_vendor/include)
-  include_directories(BEFORE /opt/ros/humble/src/gmock_vendor/include)
+  include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gtest_vendor/include)
+  include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gmock_vendor/include)
 
   # Gtest for dnn image encoder node
   ament_add_gtest(dnn_image_encoder_node_test test/dnn_image_encoder_node_test.cpp)
   target_link_libraries(dnn_image_encoder_node_test dnn_image_encoder_node)
-  target_include_directories(dnn_image_encoder_node_test PUBLIC include/isaac_ros_dnn_image_encoder/)
+  target_include_directories(dnn_image_encoder_node_test PUBLIC include/)
   ament_target_dependencies(dnn_image_encoder_node_test rclcpp)
   ament_target_dependencies(dnn_image_encoder_node_test isaac_ros_nitros)
 

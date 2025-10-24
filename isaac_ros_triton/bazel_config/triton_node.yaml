@@ -23,7 +23,7 @@ components:
   parameters:
     log_level: 2
     model_repository_paths: [model_repository_path_placeholder]
-    backend_directory_path: /opt/tritonserver/backends
+    backend_directory_path: ./ros_ws/src/isaac_ros_dnn_inference/isaac_ros_triton/ros_ws/opt/tritonserver/backends/
 ---
 name: triton_request
 components:
