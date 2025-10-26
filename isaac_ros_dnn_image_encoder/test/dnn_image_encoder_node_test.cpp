@@ -16,7 +16,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <gmock/gmock.h>
-#include "dnn_image_encoder_node.hpp"
+#include "isaac_ros_dnn_image_encoder/dnn_image_encoder_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 // Objective: to cover code lines where exceptions are thrown

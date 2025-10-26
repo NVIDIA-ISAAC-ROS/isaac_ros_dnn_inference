@@ -19,6 +19,7 @@
 
 #include <climits>
 
+#include "isaac_ros_common/cuda_stream.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 #include "sensor_msgs/image_encodings.hpp"
@@ -93,7 +94,10 @@ ImageToTensorNode::ImageToTensorNode(const rclcpp::NodeOptions options)
   scale_{declare_parameter<bool>("scale", true)},
   tensor_name_{declare_parameter<std::string>("tensor_name", "tensor")}
 {
-  CheckCudaErrors(cudaStreamCreate(&stream_), __FILE__, __LINE__);
+  CHECK_CUDA_ERROR(
+    ::nvidia::isaac_ros::common::initNamedCudaStream(
+      stream_, "isaac_ros_image_to_tensor_node"),
+    "Error initializing CUDA stream");
 }
 
 void ImageToTensorNode::ImageToTensorCallback(

@@ -410,5 +410,6 @@ components:
     clock: clock
     stop_on_deadlock: false
     worker_thread_number: 2
+    worker_thread_name_id: "dnn_image_encoder_node"
 - name: clock
   type: nvidia::gxf::RealtimeClock

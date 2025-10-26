@@ -26,7 +26,7 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 # Dependencies
-find_package(TENSORRT 10 MODULE REQUIRED)
+find_package(TENSORRT MODULE REQUIRED)
 
 # TensorRTNode
 ament_auto_add_library(tensor_rt_node SHARED src/tensor_rt_node.cpp)
@@ -50,13 +50,13 @@ if(BUILD_TESTING)
   set(CMAKE_IGNORE_PATH "/usr/include/gmock" ${CMAKE_IGNORE_PATH})
 
   # Explicitly use ROS2 vendor googletest/gmock
-  include_directories(BEFORE /opt/ros/humble/src/gtest_vendor/include)
-  include_directories(BEFORE /opt/ros/humble/src/gmock_vendor/include)
+  include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gtest_vendor/include)
+  include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gmock_vendor/include)
 
   # Add gtests
   ament_add_gtest(tensor_rt_node_test test/tensor_rt_node_test.cpp)
   target_link_libraries(tensor_rt_node_test tensor_rt_node)
-  target_include_directories(tensor_rt_node_test PUBLIC include/isaac_ros_tensor_rt/)
+  target_include_directories(tensor_rt_node_test PUBLIC include/)
   ament_target_dependencies(tensor_rt_node_test rclcpp)
   ament_target_dependencies(tensor_rt_node_test isaac_ros_nitros)
 

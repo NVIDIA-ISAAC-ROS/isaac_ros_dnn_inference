@@ -1,6 +1,6 @@
 %YAML 1.2
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ components:
 - name: data_receiver
   type: nvidia::gxf::DoubleBufferReceiver
   parameters:
-    capacity: 12
+    capacity: 1
 - type: nvidia::gxf::MessageAvailableSchedulingTerm
   parameters:
     receiver: data_receiver
@@ -66,7 +66,7 @@ components:
 - name: data_transmitter
   type: nvidia::gxf::DoubleBufferTransmitter
   parameters:
-    capacity: 12
+    capacity: 1
 - type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
   parameters:
     transmitter: data_transmitter
@@ -81,6 +81,14 @@ components:
   parameters:
     allocator: allocator
     min_blocks: 1
+- name: cuda_stream
+  type: nvidia::gxf::CudaStreamPool
+  parameters:
+    stream_flags: 1
+    stream_priority: 0
+    reserved_size: 1
+    max_size: 1
+    nvtx_identifier: "nitros_reshape_node_cuda_stream"
 - name: reshape_operator
   type: nvidia::isaac::tensor_ops::Reshape
   parameters:
@@ -91,6 +99,30 @@ components:
     output_adapter: global/adapter_planar_rgb_f32
     output_name: "input_tensor"
     output_shape: []
+    stream_pool: cuda_stream
+---
+name: cuda_stream_sync
+components:
+- name: rx
+  type: nvidia::gxf::DoubleBufferReceiver
+  parameters:
+    capacity: 1
+- name: tx
+  type: nvidia::gxf::DoubleBufferTransmitter
+  parameters:
+    capacity: 1
+- type: nvidia::gxf::MessageAvailableSchedulingTerm
+  parameters:
+    receiver: rx
+    min_size: 1
+- type: nvidia::gxf::DownstreamReceptiveSchedulingTerm
+  parameters:
+    transmitter: tx
+    min_size: 1
+- type: nvidia::gxf::CudaStreamSync
+  parameters:
+    rx: rx
+    tx: tx
 ---
 name: sink
 components:
@@ -107,10 +139,15 @@ components:
   parameters:
     source: signal
 ---
+name: connections
 components:
 - type: nvidia::gxf::Connection
   parameters:
     source: reshaper/data_transmitter
+    target: cuda_stream_sync/rx
+- type: nvidia::gxf::Connection
+  parameters:
+    source: cuda_stream_sync/tx
     target: sink/signal
 ---
 name: utils
@@ -122,6 +159,7 @@ components:
     clock: clock
     stop_on_deadlock: false
     worker_thread_number: 2
+    worker_thread_name_id: "reshape_node"
 - type: nvidia::gxf::JobStatistics
   parameters:
     clock: clock

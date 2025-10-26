@@ -16,7 +16,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <gmock/gmock.h>
-#include "tensor_rt_node.hpp"
+#include "isaac_ros_tensor_rt/tensor_rt_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 
