@@ -35,7 +35,7 @@ def generate_test_description():
     """Generate launch description with all TensorRT ROS 2 nodes for testing."""
     # By default loads and runs mobilenetv2-1.0
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    model_file_path = dir_path + '/../../test/models/mobilenetv2-1.0.onnx'
+    model_file_path = dir_path + '/models/mobilenetv2-1.0.onnx'
 
     # Remove the default trt_engine.plan before starting the node if it exists
     try:

@@ -58,6 +58,7 @@ private:
   // TensorRT Inference Parameters
   const std::string model_file_path_;
   const std::string engine_file_path_;
+  const std::string custom_plugin_lib_;
 
   // Input tensors
   const StringList input_tensor_names_;

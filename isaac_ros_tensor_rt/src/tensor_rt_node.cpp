@@ -17,6 +17,7 @@
 
 #include "isaac_ros_tensor_rt/tensor_rt_node.hpp"
 
+#include <dlfcn.h>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -191,6 +192,7 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
     PACKAGE_NAME),
   model_file_path_(declare_parameter<std::string>("model_file_path", "model.onnx")),
   engine_file_path_(declare_parameter<std::string>("engine_file_path", "/tmp/trt_engine.plan")),
+  custom_plugin_lib_(declare_parameter<std::string>("custom_plugin_lib", "")),
   input_tensor_names_(declare_parameter<StringList>("input_tensor_names", StringList())),
   input_binding_names_(declare_parameter<StringList>("input_binding_names", StringList())),
   input_tensor_formats_(declare_parameter<StringList>("input_tensor_formats", StringList())),
@@ -269,6 +271,18 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
       get_logger(),
       "[TensorRTNode] Set output data format to: \"%s\"",
       output_tensor_formats_[0].c_str());
+  }
+
+  if (!custom_plugin_lib_.empty()) {
+    if (!dlopen(custom_plugin_lib_.c_str(), RTLD_NOW)) {
+      const char * error = dlerror();
+      throw std::invalid_argument(
+        "[TensorRTNode] Preload plugins failed: " + std::string(error ? error : "Unknown error"));
+    }
+    RCLCPP_INFO(
+      get_logger(),
+      "[TensorRTNode] plugins: \"%s\" loaded successfully",
+      custom_plugin_lib_.c_str());
   }
 
   registerSupportedType<nvidia::isaac_ros::nitros::NitrosTensorList>();
