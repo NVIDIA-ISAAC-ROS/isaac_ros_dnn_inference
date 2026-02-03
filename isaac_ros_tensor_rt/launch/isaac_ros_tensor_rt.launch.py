@@ -35,6 +35,10 @@ def generate_launch_description():
             default_value='',
             description='The absolute file path to the TensorRT engine file'),
         DeclareLaunchArgument(
+            'custom_plugin_lib',
+            default_value='',
+            description='Custom plugin for models'),
+        DeclareLaunchArgument(
             'input_tensor_names',
             default_value='["input_tensor"]',
             description='A list of tensor names to bound to the specified input binding names'),
@@ -63,6 +67,7 @@ def generate_launch_description():
     # TensorRT parameters
     model_file_path = LaunchConfiguration('model_file_path')
     engine_file_path = LaunchConfiguration('engine_file_path')
+    custom_plugin_lib = LaunchConfiguration('custom_plugin_lib')
     input_tensor_names = LaunchConfiguration('input_tensor_names')
     input_binding_names = LaunchConfiguration('input_binding_names')
     output_tensor_names = LaunchConfiguration('output_tensor_names')
@@ -84,7 +89,8 @@ def generate_launch_description():
             'input_tensor_names': input_tensor_names,
             'input_binding_names': input_binding_names,
             'verbose': verbose,
-            'force_engine_update': force_engine_update
+            'force_engine_update': force_engine_update,
+            'custom_plugin_lib': custom_plugin_lib,
         }]
     )
 

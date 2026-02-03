@@ -34,7 +34,7 @@ def generate_test_description():
     """Generate launch description with all Triton ROS 2 nodes for testing."""
     # Loads and runs mobilenetv2-1.0
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    model_dir = dir_path + '/../../test/models'
+    model_dir = dir_path + '/models'
 
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -81,9 +81,6 @@ class IsaacROSTritonNodeTest(IsaacROSBaseTest):
 
     # Using default ROS-GXF Bridge output tensor channel configured in 'run_triton_inference' exe
     SUBSCRIBER_CHANNEL = 'tensor_sub'
-    # The amount of seconds to allow Triton node to run before verifying received tensors
-    # Will depend on time taken for Triton engine generation
-    PYTHON_SUBSCRIBER_WAIT_SEC = 30.0
 
     # Mobilenetv2-1.0 output tensor properties to verify
     NAME = 'output'
@@ -92,6 +89,9 @@ class IsaacROSTritonNodeTest(IsaacROSBaseTest):
     RANK = 2
     STRIDES = [4000, 4]
     DATA_LENGTH = 4000
+
+    # Timeout for first successful inference (model loading + inference pipeline ready)
+    TIMEOUT_SEC = 300
 
     def test_triton_node(self) -> None:
         self.node._logger.info('Starting Isaac ROS Triton Node POL Test')
@@ -133,19 +133,22 @@ class IsaacROSTritonNodeTest(IsaacROSBaseTest):
 
             pub_tensor_list.tensors = [pub_tensor]
 
-            end_time = time.time() + self.PYTHON_SUBSCRIBER_WAIT_SEC
-            while time.time() < end_time:
-                tensor_pub.publish(pub_tensor_list)
-                time.sleep(1)
-                rclpy.spin_once(self.node, timeout_sec=0.1)
-
-            # Verify received tensors and log total number of tensors received
-            num_tensors_received = len(received_messages[subscriber_topic_namespace])
-            self.assertGreater(num_tensors_received, 0)
+            # Publish tensors until we receive at least one inference response
             self.node._logger.info(
-                f'Received {num_tensors_received} tensors in '
-                f'{self.PYTHON_SUBSCRIBER_WAIT_SEC} seconds')
+                'Publishing tensors until inference response received '
+                f'(timeout={self.TIMEOUT_SEC}s)')
+            start_time = time.time()
+            while len(received_messages.get(subscriber_topic_namespace, [])) == 0:
+                if time.time() - start_time > self.TIMEOUT_SEC:
+                    self.fail('Timed out waiting for inference response')
+                tensor_pub.publish(pub_tensor_list)
+                rclpy.spin_once(self.node, timeout_sec=0.1)
+                time.sleep(1)
 
+            self.node._logger.info(
+                f'Received inference response after {time.time() - start_time:.1f}s')
+
+            # Verify received tensor properties match mobilenetv2-1.0 output
             for tensor_list, _ in received_messages[subscriber_topic_namespace]:
                 tensor = tensor_list.tensors[0]
 
