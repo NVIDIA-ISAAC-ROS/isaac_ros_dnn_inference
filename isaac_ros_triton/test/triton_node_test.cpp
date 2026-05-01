@@ -16,15 +16,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <gmock/gmock.h>
-#include "isaac_ros_triton_node/triton_node.hpp"
+#include "isaac_ros_triton/triton_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 // Objective: to cover code lines where exceptions are thrown
 // Approach: send Invalid Arguments for node parameters to trigger the exception
 
 TEST(triton_node_test, test_empty_model_name)
-{
-  rclcpp::init(0, nullptr);
+  {
+    rclcpp::init(0, nullptr);
   rclcpp::NodeOptions options;
   options.append_parameter_override("model_name", "");
   EXPECT_THROW(
