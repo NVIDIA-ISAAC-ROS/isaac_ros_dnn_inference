@@ -406,7 +406,7 @@ void TensorRTNode::postLoadGraphCallback()
 
   getNitrosContext().setParameterBool(
     TENSOR_RT_ENTITY_NAME, TENSOR_RT_COMPONENT_TYPE,
-    "enable_fp16_", enable_fp16_);
+    "enable_fp16", enable_fp16_);
 
   getNitrosContext().setParameterBool(
     TENSOR_RT_ENTITY_NAME, TENSOR_RT_COMPONENT_TYPE, "relaxed_dimension_check",
