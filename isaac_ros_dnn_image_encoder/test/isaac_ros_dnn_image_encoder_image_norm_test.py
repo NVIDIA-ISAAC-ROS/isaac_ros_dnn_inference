@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,12 +21,11 @@ import pathlib
 import struct
 import time
 
-from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from isaac_ros_tensor_list_interfaces.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
-from launch.actions import IncludeLaunchDescription
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 import numpy as np
 
 import pytest
@@ -41,27 +40,37 @@ DIMENSION_HEIGHT = 100
 
 @pytest.mark.rostest
 def generate_test_description():
-    encoder_dir = get_package_share_directory('isaac_ros_dnn_image_encoder')
-    namespace = IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace()
-    encoder_node_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            [os.path.join(encoder_dir, 'launch', 'dnn_image_encoder.launch.py')]
-        ),
-        launch_arguments={
-            'input_image_width': f'{DIMENSION_WIDTH}',
-            'input_image_height': f'{DIMENSION_HEIGHT}',
-            'network_image_width': f'{DIMENSION_WIDTH}',
-            'network_image_height': f'{DIMENSION_HEIGHT}',
-            'image_mean': str([0.5, 0.6, 0.25]),
-            'image_stddev': str([0.25, 0.8, 0.5]),
-            'enable_padding': 'True',
-            'tensor_output_topic': 'tensors',
-            'dnn_image_encoder_namespace': namespace,
-        }.items(),
-    )
+    dnn_image_encoder_node = ComposableNode(
+        name='dnn_image_encoder_node',
+        package='isaac_ros_dnn_image_encoder',
+        plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
+        namespace=IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace(),
+        parameters=[{
+            'input_image_width': DIMENSION_WIDTH,
+            'input_image_height': DIMENSION_HEIGHT,
+            'network_image_width': DIMENSION_WIDTH,
+            'network_image_height': DIMENSION_HEIGHT,
+            'input_encoding': 'bgr8',
+            'image_mean': [0.5, 0.6, 0.25],
+            'image_stddev': [0.25, 0.8, 0.5],
+            'enable_padding': True,
+            # 'tensor_output_topic': 'tensors',
+            'dnn_image_encoder_namespace':
+                IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace(),
+        }],
+        remappings=[('image', 'image'), ('tensors', 'tensors')])
 
     return IsaacROSDnnImageEncoderImageNormNodeTest.generate_test_description([
-        encoder_node_launch
+        ComposableNodeContainer(
+            name='dnn_image_encoder_container',
+            package='rclcpp_components',
+            executable='component_container_mt',
+            composable_node_descriptions=[dnn_image_encoder_node],
+            namespace=IsaacROSDnnImageEncoderImageNormNodeTest.generate_namespace(),
+            output='screen',
+            arguments=['--ros-args', '--log-level', 'info',
+                       '--log-level', 'isaac_ros_test.encoder:=debug'],
+        )
     ])
 
 

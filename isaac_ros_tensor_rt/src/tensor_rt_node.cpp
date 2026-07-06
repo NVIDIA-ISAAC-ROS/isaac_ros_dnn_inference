@@ -29,10 +29,7 @@
 #include "isaac_ros_common/qos.hpp"
 #include "isaac_ros_nitros/types/nitros_type_manager.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_view.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
-#include "std_msgs/msg/header.hpp"
+#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_shape.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
@@ -91,15 +88,6 @@ private:
 };
 TensorRT_Logger tensor_rt_logger;
 
-
-void CheckCudaError(cudaError_t result)
-{
-  if (result != cudaSuccess) {
-    throw std::runtime_error("[TensorRTNode] CUDA error: " +
-                             std::string(cudaGetErrorString(result)) +
-                             " at " + __FILE__ + ":" + std::to_string(__LINE__));
-  }
-}
 
 size_t GetElementSizeFromDataType(
   nvinfer1::DataType data_type)
@@ -198,18 +186,19 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
   max_batch_size_(declare_parameter<int32_t>("max_batch_size", 1)),
   enable_fp16_(declare_parameter<bool>("enable_fp16", true)),
   relaxed_dimension_check_(declare_parameter<bool>("relaxed_dimension_check", true)),
-  num_blocks_(declare_parameter<int64_t>("num_blocks", 40))
+  memory_pool_block_size_(declare_parameter<int64_t>("memory_pool_block_size", 1920 * 1200 * 4)),
+  memory_pool_num_blocks_(declare_parameter<int64_t>("memory_pool_num_blocks", 40)),
+  input_queue_size_(declare_parameter<int16_t>("input_queue_size", 1)),
+  output_queue_size_(declare_parameter<int16_t>("output_queue_size", 1))
 {
   RCLCPP_DEBUG(get_logger(), "[TensorRTNode] In TensorRTNode's constructor");
 
-  // Initialize CUDA stream
-  CheckCudaError(cudaStreamCreate(&cuda_stream_));
+  const rclcpp::QoS input_qos = ::isaac_ros::common::AddQosParameter(
+    *this, "DEFAULT", "input_qos").keep_last(input_queue_size_);
+  const rclcpp::QoS output_qos = ::isaac_ros::common::AddQosParameter(
+    *this, "DEFAULT", "output_qos").keep_last(output_queue_size_);
 
-  // Set up QoS parameters
-  rclcpp::QoS input_qos_ = ::isaac_ros::common::AddQosParameter(
-    *this, "DEFAULT", "input_qos");
-  rclcpp::QoS output_qos_ = ::isaac_ros::common::AddQosParameter(
-    *this, "DEFAULT", "output_qos");
+  cuda_stream_ = ::nvidia::isaac_ros::common::createCudaStream("TensorRTNode");
 
   // Determine input and output formats
   std::string input_format = INPUT_DEFAULT_TENSOR_FORMAT;
@@ -261,21 +250,34 @@ TensorRTNode::TensorRTNode(const rclcpp::NodeOptions & options)
   }
 
   tensor_rt_logger.setReportableSeverity(nvinfer1::ILogger::Severity::kINFO);
-  // Initialize TensorRT engine
+  // Initialize TensorRT engine (populates output_binding_infos_).
   InitializeTensorRTEngine();
 
-  // Create Managed NITROS subscriber for input tensors
-  input_sub_ = std::make_shared<nvidia::isaac_ros::nitros::ManagedNitrosSubscriber<
-        nvidia::isaac_ros::nitros::NitrosTensorListView>>(
-      this, INPUT_TOPIC_NAME, input_format,
-      std::bind(&TensorRTNode::InputTensorCallback, this, std::placeholders::_1),
-      nvidia::isaac_ros::nitros::NitrosDiagnosticsConfig{}, input_qos_);
+  // Size the pool block large enough for the largest output tensor the engine
+  // can produce; falling back to memory_pool_block_size_ if that's already larger.
+  size_t max_output_binding_size = 0;
+  for (const auto & kv : output_binding_infos_) {
+    max_output_binding_size = std::max(max_output_binding_size, kv.second);
+  }
+  const int64_t actual_block_size = std::max(
+    memory_pool_block_size_, static_cast<int64_t>(max_output_binding_size));
+  CHECK_CUDA_ERROR(pool_.create(
+    static_cast<size_t>(actual_block_size),
+    static_cast<size_t>(memory_pool_num_blocks_),
+    nvidia::isaac_ros::nitros::CUDAMemoryPool::MemoryType::Device),
+    "[TensorRTNode] Failed to create memory pool");
 
-  // Create Managed NITROS publisher for output tensors
-  output_pub_ = std::make_shared<nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
-        nvidia::isaac_ros::nitros::NitrosTensorList>>(
-      this, OUTPUT_TOPIC_NAME, output_format,
-      nvidia::isaac_ros::nitros::NitrosDiagnosticsConfig{}, output_qos_);
+  // Create subscribers for input and output tensors
+  rclcpp::SubscriptionOptions sub_options;
+  sub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
+  rclcpp::PublisherOptions pub_options;
+  pub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
+  input_sub_ = create_subscription<nvidia::isaac_ros::nitros::NitrosTensorList>(
+    INPUT_TOPIC_NAME, input_qos,
+    std::bind(&TensorRTNode::InputTensorCallback, this, std::placeholders::_1),
+    sub_options);
+  output_pub_ = create_publisher<nvidia::isaac_ros::nitros::NitrosTensorList>(
+    OUTPUT_TOPIC_NAME, output_qos, pub_options);
 
   RCLCPP_INFO(get_logger(), "[TensorRTNode] TensorRT Node initialized successfully");
 }
@@ -326,12 +328,12 @@ void TensorRTNode::InitializeTensorRTEngine()
 }
 
 void TensorRTNode::InputTensorCallback(
-  const nvidia::isaac_ros::nitros::NitrosTensorListView & tensor_list)
+  const nvidia::isaac_ros::nitros::NitrosTensorList::ConstSharedPtr tensor_list)
 {
   RCLCPP_DEBUG(get_logger(), "Received input tensor list");
   try {
     // Perform inference
-    auto output_tensor_list = DoInference(tensor_list);
+    auto output_tensor_list = DoInference(*tensor_list);
 
     // Publish result
     output_pub_->publish(output_tensor_list);
@@ -341,103 +343,134 @@ void TensorRTNode::InputTensorCallback(
 }
 
 nvidia::isaac_ros::nitros::NitrosTensorList TensorRTNode::DoInference(
-  const nvidia::isaac_ros::nitros::NitrosTensorListView & input_tensor_list)
+  const nvidia::isaac_ros::nitros::NitrosTensorList & input_tensor_list)
 {
-  // Set input tensor addresses directly from input tensor buffers
+  // Hold read handles alive past enqueueV3 so the read-done events are recorded
+  // AFTER TRT finishes reading, preventing upstream from recycling input buffers early.
+  std::vector<nvidia::isaac_ros::nitros::ReadHandle> input_read_handles;
+  input_read_handles.reserve(input_binding_names_.size());
+
   for (size_t i = 0; i < input_binding_names_.size(); ++i) {
     const std::string & binding_name = input_binding_names_[i];
     const std::string & tensor_name = input_tensor_names_[i];
 
-    auto input_tensor = input_tensor_list.GetNamedTensor(tensor_name);
+    auto input_tensor = input_tensor_list.get_tensor_by_name(tensor_name);
+    if (!input_tensor) {
+      throw std::runtime_error(
+        "[TensorRTNode] Input tensor not found: " + tensor_name);
+    }
 
-    // Updates the latest dimension of input tensor
-    nvinfer1::Dims dims = input_binding_dims_[binding_name];
+    const auto input_shape = input_tensor->shape().dims();
+    // TensorRT requires setInputShape() to use the engine binding rank. Some
+    // upstream tensors are unbatched, for example CHW image tensors feeding an
+    // explicit-batch NCHW engine, so use the cached binding dims as the shape
+    // template instead of copying the incoming tensor metadata rank directly.
+    const auto binding_dims_it = input_binding_dims_.find(binding_name);
+    if (binding_dims_it == input_binding_dims_.end()) {
+      throw std::runtime_error("[TensorRTNode] Input binding dimensions not found: " +
+                               binding_name);
+    }
+
+    nvinfer1::Dims dims = binding_dims_it->second;
+    const auto input_rank = static_cast<int32_t>(input_shape.size());
+    const int32_t rank_delta = dims.nbDims - input_rank;
+    // The input either matches the binding rank or omits only the leading batch
+    // dimension. Any other rank difference is ambiguous and cannot be mapped
+    // safely to TensorRT binding dimensions.
+    if (rank_delta != 0 && rank_delta != 1) {
+      throw std::runtime_error("[TensorRTNode] Input tensor rank does not match binding rank: " +
+                               tensor_name);
+    }
+
+    // Dynamic batch is the only runtime dimension handled here. If the tensor
+    // omitted batch, only a unit-batch static engine can be inferred safely.
+    if (dims.d[0] < 0) {
+      dims.d[0] = rank_delta == 0 ? input_shape[0] : 1;
+    } else if (rank_delta == 1 && dims.d[0] != 1) {
+      throw std::runtime_error("[TensorRTNode] Input tensor omits non-unit batch dimension: " +
+                               tensor_name);
+    }
+
+    // Keep non-batch dimensions from the engine binding. Supporting dynamic
+    // C/H/W would require layout-specific mapping instead of assuming that
+    // incoming tensor metadata and TensorRT binding dimensions use the same
+    // index order.
+    for (int32_t j = 1; j < dims.nbDims; ++j) {
+      if (dims.d[j] < 0) {
+        throw std::runtime_error(
+          "[TensorRTNode] Dynamic non-batch dimensions are not supported for input tensor: " +
+          tensor_name);
+      }
+    }
     if (!context_->setInputShape(binding_name.c_str(), dims)) {
       throw std::runtime_error("[TensorRTNode] Failed to update input binding dimensions: " +
                                binding_name);
     }
 
-    // Set tensor address directly to input tensor buffer (no copy needed)
+    auto read_handle = input_tensor->get_read_handle(*cuda_stream_);
+    const uint8_t * buffer_ptr = read_handle.get_ptr();
+
     if (!context_->setTensorAddress(binding_name.c_str(),
-            static_cast<void *>(const_cast<unsigned char *>(input_tensor.GetBuffer()))))
+        const_cast<void *>(static_cast<const void *>(buffer_ptr))))
     {
       throw std::runtime_error(
         "[TensorRTNode] Failed to set input tensor address for: " +
         binding_name);
     }
+    input_read_handles.push_back(std::move(read_handle));
   }
 
-  // Set output tensor addresses
+  // Hold write handles alive past enqueueV3 so the write-done events are recorded
+  // AFTER TRT finishes writing, preventing downstream from reading stale data.
+  std::vector<nvidia::isaac_ros::nitros::NitrosTensor> output_tensors;
+  std::vector<nvidia::isaac_ros::nitros::WriteHandle> output_write_handles;
+  output_tensors.reserve(output_binding_names_.size());
+  output_write_handles.reserve(output_binding_names_.size());
+
   for (size_t i = 0; i < output_binding_names_.size(); ++i) {
     const std::string & binding_name = output_binding_names_[i];
 
-    void * binding_ptr;
-    size_t binding_size = output_binding_infos_[binding_name];
-    CheckCudaError(cudaMallocAsync(&binding_ptr, binding_size, cuda_stream_));
-
-    // Set tensor address for TensorRT execution context
-    if (!context_->setTensorAddress(binding_name.c_str(), binding_ptr)) {
-      throw std::runtime_error(
-        "[TensorRTNode] Failed to set output tensor address for: " +
-        binding_name);
-    }
-  }
-
-  // Execute inference
-  if (!context_->enqueueV3(cuda_stream_)) {
-    throw std::runtime_error("[TensorRTNode] TensorRT inference failed");
-  }
-
-  // Synchronize stream
-  CheckCudaError(cudaStreamSynchronize(cuda_stream_));
-
-  // Create header for output
-  std_msgs::msg::Header header;
-  header.frame_id = input_tensor_list.GetFrameId();
-  header.stamp.sec = input_tensor_list.GetTimestampSeconds();
-  header.stamp.nanosec = input_tensor_list.GetTimestampNanoseconds();
-
-  // Build output tensor list
-  nvidia::isaac_ros::nitros::NitrosTensorListBuilder builder;
-  builder.WithHeader(header);
-
-  for (size_t i = 0; i < output_binding_names_.size(); ++i) {
-    const std::string & binding_name = output_binding_names_[i];
-    const std::string & tensor_name = output_tensor_names_[i];
-
-    void * output_data = context_->getOutputTensorAddress(binding_name.c_str());
-    if (!output_data) {
-      throw std::runtime_error("[TensorRTNode] Failed to get output tensor address: " +
-                               binding_name);
-    }
-
-    auto tensor_dims = cuda_engine_->getTensorShape(binding_name.c_str());
-
-    // Convert TensorRT dimensions to vector for NitrosTensorShape
+    auto tensor_dims = context_->getTensorShape(binding_name.c_str());
     std::vector<int32_t> shape_dims;
     for (int j = 0; j < tensor_dims.nbDims; ++j) {
       shape_dims.push_back(tensor_dims.d[j]);
     }
     nvidia::isaac_ros::nitros::NitrosTensorShape shape(shape_dims);
-
     auto tensor_data_type = cuda_engine_->getTensorDataType(binding_name.c_str());
     auto nitros_data_type = GetNitrosDataTypeFromInferDataType(tensor_data_type);
+    nvidia::isaac_ros::nitros::NitrosTensor tensor;
+    auto write_handle = tensor.from_pool(
+      binding_name, pool_, shape, nitros_data_type, *cuda_stream_);
 
-    // Build tensor
-    nvidia::isaac_ros::nitros::NitrosTensorBuilder tensor_builder;
-    auto output_tensor = tensor_builder
-      .WithShape(shape)
-      .WithDataType(nitros_data_type)
-      .WithData(output_data)
-      .WithReleaseCallback([output_data, stream = cuda_stream_]() {
-          cudaFreeAsync(output_data, stream);
-      })
-      .Build();
-
-    builder.AddTensor(tensor_name, std::move(output_tensor));
+    tensor.set_name(binding_name);
+    if (!context_->setTensorAddress(binding_name.c_str(), write_handle.get_ptr())) {
+      throw std::runtime_error("[TensorRTNode] Failed to set output tensor address for: " +
+                               binding_name);
+    }
+    output_write_handles.push_back(std::move(write_handle));
+    output_tensors.push_back(std::move(tensor));
   }
 
-  return builder.Build();
+  if (!context_->enqueueV3(*cuda_stream_)) {
+    throw std::runtime_error("[TensorRTNode] TensorRT inference failed");
+  }
+
+  // Handles go out of scope here, recording events AFTER enqueueV3 is submitted.
+  // This ensures correct event ordering for the buffer synchronization protocol.
+  output_write_handles.clear();
+  input_read_handles.clear();
+
+  nvidia::isaac_ros::nitros::NitrosTensorList output_tensor_list;
+  output_tensor_list.set_timestamp_sec(input_tensor_list.get_timestamp_sec());
+  output_tensor_list.set_timestamp_nsec(input_tensor_list.get_timestamp_nsec());
+  output_tensor_list.set_frame_id(input_tensor_list.get_frame_id());
+
+  for (size_t i = 0; i < output_tensors.size(); ++i) {
+    output_tensors[i].set_name(output_tensor_names_[i]);
+    output_tensor_list.add_tensor(std::move(output_tensors[i]));
+  }
+
+  return output_tensor_list;
 }
 
 void TensorRTNode::LoadEngineFromFile()
@@ -607,10 +640,13 @@ void TensorRTNode::SetupBindings()
     binding_is_input = cuda_engine_->getTensorIOMode(tensor_name) ==
       nvinfer1::TensorIOMode::kINPUT;
 
-    // Calculate binding size
+    // Calculate binding size. Replace dynamic dims (-1) with max_batch_size_
+    // (bounded below by 1) so this is a true upper bound on bytes written.
+    const int64_t dynamic_dim_bound = std::max<int64_t>(max_batch_size_, 1);
     size_t binding_size = 1;
     for (int j = 0; j < binding_dims.nbDims; ++j) {
-      binding_size *= std::max(binding_dims.d[j], 1L);
+      const int64_t dim = binding_dims.d[j] > 0 ? binding_dims.d[j] : dynamic_dim_bound;
+      binding_size *= static_cast<size_t>(dim);
     }
 
     // Get element size
@@ -629,23 +665,7 @@ void TensorRTNode::SetupBindings()
   }
 }
 
-TensorRTNode::~TensorRTNode() noexcept
-{
-  // Clean up CUDA resources
-  if (cuda_stream_) {
-    cudaError_t err = cudaStreamDestroy(cuda_stream_);
-    if (err != cudaSuccess) {
-      RCLCPP_ERROR(get_logger(), "Failed to destroy CUDA stream: %s",
-                   cudaGetErrorString(err));
-    }
-  }
-
-  cuda_stream_ = nullptr;
-  input_binding_dims_.clear();
-  output_binding_infos_.clear();
-
-  RCLCPP_INFO(get_logger(), "TensorRT engine cleaned up successfully");
-}
+TensorRTNode::~TensorRTNode() {}
 
 }  // namespace dnn_inference
 }  // namespace isaac_ros

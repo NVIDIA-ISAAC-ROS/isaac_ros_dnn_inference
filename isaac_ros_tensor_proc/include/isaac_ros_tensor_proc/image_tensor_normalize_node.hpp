@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,9 +24,7 @@
 
 #include "cvcuda/OpNormalize.hpp"
 #include "isaac_ros_common/qos.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_view.hpp"
+#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 #include "nvcv/Tensor.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -36,40 +34,38 @@ namespace isaac_ros
 {
 namespace dnn_inference
 {
-
 class ImageTensorNormalizeNode : public rclcpp::Node
 {
 public:
-  explicit ImageTensorNormalizeNode(const rclcpp::NodeOptions options = rclcpp::NodeOptions());
-
+  explicit ImageTensorNormalizeNode(const rclcpp::NodeOptions & options);
   ~ImageTensorNormalizeNode();
 
 private:
   void ImageTensorNormalizeCallback(
-    const ::nvidia::isaac_ros::nitros::NitrosTensorListView & tensor_msg);
+    const nvidia::isaac_ros::nitros::NitrosTensorList::SharedPtr tensor_msg);
 
-  rclcpp::QoS input_qos_;
-  rclcpp::QoS output_qos_;
-
-  std::shared_ptr<::nvidia::isaac_ros::nitros::ManagedNitrosSubscriber<
-      ::nvidia::isaac_ros::nitros::NitrosTensorListView>>
-  nitros_tensor_sub_;
-  std::shared_ptr<::nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
-      ::nvidia::isaac_ros::nitros::NitrosTensorList>>
-  nitros_tensor_pub_;
-
-  const std::vector<double> mean_param_;
-  const std::vector<double> stddev_param_;
-
+  // Parameters
+  const std::vector<double> image_mean_;
+  const std::vector<double> image_stddev_;
   const std::string input_tensor_name_;
   const std::string output_tensor_name_;
+  const int64_t memory_pool_block_size_;
+  const int64_t memory_pool_num_blocks_;
+  const rclcpp::QoS input_qos_;
+  const rclcpp::QoS output_qos_;
+
+  // Subscribers and publishers
+  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr tensor_list_sub_;
+  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr tensor_list_pub_;
 
   nvcv::Tensor mean_;
   nvcv::Tensor stddev_;
 
-  cudaStream_t stream_;
-  nvcv::TensorLayout tensor_layout_;
-  cvcuda::Normalize norm_op_;
+  // Resources
+  ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
+  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
+
+  cvcuda::Normalize normalize_op_;
 };
 
 }  // namespace dnn_inference

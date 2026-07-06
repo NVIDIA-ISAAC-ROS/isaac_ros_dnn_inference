@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,8 +20,11 @@
 #include <string>
 #include <vector>
 
-#include "isaac_ros_nitros/nitros_node.hpp"
+#include "cvcuda/OpReformat.hpp"
+#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
+
 #include "rclcpp/rclcpp.hpp"
+#include "nvcv/Tensor.hpp"
 
 namespace nvidia
 {
@@ -29,23 +32,37 @@ namespace isaac_ros
 {
 namespace dnn_inference
 {
-
-class InterleavedToPlanarNode : public nitros::NitrosNode
+class InterleavedToPlanarNode : public rclcpp::Node
 {
 public:
-  explicit InterleavedToPlanarNode(const rclcpp::NodeOptions & = rclcpp::NodeOptions());
-  ~InterleavedToPlanarNode() = default;
-
-  void postLoadGraphCallback() override;
+  explicit InterleavedToPlanarNode(const rclcpp::NodeOptions & options);
+  ~InterleavedToPlanarNode();
 
 private:
+  void InterleavedToPlanarCallback(
+    const nvidia::isaac_ros::nitros::NitrosTensorList::SharedPtr msg);
+
+  // Parameters
   std::vector<int64_t> input_tensor_shape_;
-  int64_t num_blocks_;
+  const int64_t memory_pool_block_size_;
+  const int64_t memory_pool_num_blocks_;
   std::string output_tensor_name_;
+  const rclcpp::QoS input_qos_;
+  const rclcpp::QoS output_qos_;
+
+  // Subscribers & Publishers
+  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr image_sub_;
+  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr image_pub_;
+
+  // Resources
+  ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
+  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
+
+  cvcuda::Reformat reformat_op_;
 };
+
 }  // namespace dnn_inference
 }  // namespace isaac_ros
 }  // namespace nvidia
-
 
 #endif  // ISAAC_ROS_TENSOR_PROC__INTERLEAVED_TO_PLANAR_NODE_HPP_

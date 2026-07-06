@@ -31,18 +31,30 @@ include(FetchContent)
 # Only prebuilt tarball is supported. Source builds are not allowed.
 if(NOT TRITON_SERVER_TARBALL_URL)
   if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    set(_TRITON_BASE_URL "https://github.com/triton-inference-server/server/releases/download/v2.60.0/")
-    set(TRITON_SERVER_TARBALL_URL "${_TRITON_BASE_URL}tritonserver2.60.0-agx.tar")
-    message(STATUS "Using default Triton AGX tarball for aarch64: ${TRITON_SERVER_TARBALL_URL}")
+    set(_TRITON_BASE_URL "https://github.com/triton-inference-server/server/releases/download")
+    set(TRITON_SERVER_TARBALL_URL "${_TRITON_BASE_URL}/v2.60.0/tritonserver2.60.0-agx.tar")
+    message(
+      STATUS "Using default Triton AGX tarball for aarch64: ${TRITON_SERVER_TARBALL_URL}"
+    )
   elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
-    set(TRITON_SERVER_TARBALL_URL "https://urm.nvidia.com/artifactory/sw-isaac-ros-generic-local/triton/tritonserver.2.60.tar.gz")
+    set(_TRITON_BASE_URL "https://artifactory.pdx.nvidia.com/artifactory")
+    set(_TRITON_PATH "sw-isaac-ros-generic-local/triton/tritonserver.2.60.tar.gz")
+    set(TRITON_SERVER_TARBALL_URL "${_TRITON_BASE_URL}/${_TRITON_PATH}")
     message(STATUS "Using default Triton x86_64 tarball: ${TRITON_SERVER_TARBALL_URL}")
   else()
-    message(FATAL_ERROR "TRITON_SERVER_TARBALL_URL must be provided for ${CMAKE_SYSTEM_PROCESSOR}. Only prebuilt tarballs are supported.")
+    message(
+      FATAL_ERROR
+      "TRITON_SERVER_TARBALL_URL must be provided for ${CMAKE_SYSTEM_PROCESSOR}. "
+      "Only prebuilt tarballs are supported."
+    )
   endif()
 endif()
 
-set(TRITON_SERVER_TARBALL_URL "${TRITON_SERVER_TARBALL_URL}" CACHE STRING "URL to prebuilt Triton Server tarball")
+set(
+  TRITON_SERVER_TARBALL_URL
+  "${TRITON_SERVER_TARBALL_URL}"
+  CACHE STRING "URL to prebuilt Triton Server tarball"
+)
 
 # Download and extract the Triton server tarball
 fetchcontent_declare(
@@ -101,7 +113,10 @@ if(_LIB_COUNT GREATER 0)
   target_link_libraries(triton_node tritonserver::tritonserver dl pthread)
 endif()
 rclcpp_components_register_nodes(triton_node "nvidia::isaac_ros::dnn_inference::TritonNode")
-set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TritonNode;$<TARGET_FILE:triton_node>\n")
+set(
+  node_plugins
+  "${node_plugins}nvidia::isaac_ros::dnn_inference::TritonNode;$<TARGET_FILE:triton_node>\n"
+)
 set_target_properties(triton_node PROPERTIES
   BUILD_WITH_INSTALL_RPATH TRUE
   BUILD_RPATH_USE_ORIGIN TRUE

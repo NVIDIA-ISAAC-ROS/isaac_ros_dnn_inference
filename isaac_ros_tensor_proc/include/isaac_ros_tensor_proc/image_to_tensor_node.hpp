@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,10 +23,8 @@
 
 #include "cvcuda/OpConvertTo.hpp"
 #include "isaac_ros_common/qos.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
-#include "isaac_ros_nitros_image_type/nitros_image_view.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_view.hpp"
+#include "isaac_ros_nitros_image_type/nitros_image.hpp"
+#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 #include "nvcv/Tensor.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -37,31 +35,32 @@ namespace isaac_ros
 {
 namespace dnn_inference
 {
-
 class ImageToTensorNode : public rclcpp::Node
 {
 public:
-  explicit ImageToTensorNode(const rclcpp::NodeOptions options = rclcpp::NodeOptions());
+  explicit ImageToTensorNode(const rclcpp::NodeOptions & options);
   ~ImageToTensorNode();
 
 private:
-  void ImageToTensorCallback(const ::nvidia::isaac_ros::nitros::NitrosImageView & img_msg);
+  void ImageToTensorCallback(const nvidia::isaac_ros::nitros::NitrosImage::SharedPtr img_msg);
 
-  rclcpp::QoS input_qos_;
-  rclcpp::QoS output_qos_;
-
-  std::shared_ptr<::nvidia::isaac_ros::nitros::ManagedNitrosSubscriber<
-      ::nvidia::isaac_ros::nitros::NitrosImageView>>
-  nitros_img_sub_;
-
-  std::shared_ptr<::nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
-      ::nvidia::isaac_ros::nitros::NitrosTensorList>>
-  nitros_tensor_pub_;
-
+  // Parameters
   bool scale_;
   std::string tensor_name_;
-  cudaStream_t stream_;
+  const int64_t memory_pool_block_size_;
+  const int64_t memory_pool_num_blocks_;
+  const rclcpp::QoS input_qos_;
+  const rclcpp::QoS output_qos_;
 
+  // Subscribers and publishers
+  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosImage>::SharedPtr image_sub_;
+  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr tensor_pub_;
+
+  // Resources
+  ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
+  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
+
+  // Operators
   cvcuda::ConvertTo convert_op_;
 };
 

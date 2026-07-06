@@ -29,10 +29,10 @@
 #include <vector>
 
 #include "isaac_ros_common/qos.hpp"
+#include "isaac_ros_common/cuda_stream.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_view.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -59,20 +59,20 @@ public:
 
 private:
   // Callback for input tensor list
-  void InputCallback(const nvidia::isaac_ros::nitros::NitrosTensorListView & view);
+  void InputCallback(const nitros::NitrosTensorList::ConstSharedPtr tensor_list);
 
   // Triton Server functionality
   bool InitializeTritonServer();
   void ShutdownTritonServer();
   bool DoTritonInference(
-    const nvidia::isaac_ros::nitros::NitrosTensorListView & view,
+    const nvidia::isaac_ros::nitros::NitrosTensorList & tensor_list,
     const std_msgs::msg::Header & header);
 
   bool InitializeBindingsMap();
 
   // Generic Triton inference implementation
   bool ExecuteInference(
-    const nvidia::isaac_ros::nitros::NitrosTensorListView & view,
+    const nvidia::isaac_ros::nitros::NitrosTensorList & input_tensor_list,
     nvidia::isaac_ros::nitros::NitrosTensorListBuilder & list_builder);
 
   bool ProcessInferenceResponse(
@@ -102,22 +102,23 @@ private:
   // Triton logging level (0 = Error, 1 = Warn, 2 = Info, 3+ = Verbose)
   const int log_level_{0};
 
+  // Optional override for Triton backend directory (empty = auto-detect)
+  const std::string backend_directory_;
+
   // mapping between tensor name and binding name
   std::unordered_map<std::string, std::string> input_bindings_map_;
   std::unordered_map<std::string, std::string> output_bindings_map_;
 
-  // QoS settings
-  rclcpp::QoS input_qos_{1};
-  rclcpp::QoS output_qos_{1};
+  const int16_t input_queue_size_;
+  const int16_t output_queue_size_;
 
-  // Managed NITROS pub/sub
-  std::shared_ptr<nitros::ManagedNitrosPublisher<
-      nitros::NitrosTensorList>> nitros_pub_;
-  std::shared_ptr<nitros::ManagedNitrosSubscriber<
-      nitros::NitrosTensorListView>> nitros_sub_;
+  // NITROS subscriber for input tensors
+  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr input_sub_;
+  // NITROS publisher for output tensors
+  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr output_pub_;
 
-  // CUDA stream for GPU operations
-  cudaStream_t cuda_stream_;
+  // CUDA resources
+  ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
 
   // Formats
   std::string input_format_;

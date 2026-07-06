@@ -42,19 +42,12 @@ def launch_setup(context, *args, **kwargs):
     enable_padding = ast.literal_eval(
         context.perform_substitution(LaunchConfiguration('enable_padding'))
     )
+    tensor_name = LaunchConfiguration('tensor_name', default='output_tensor')
 
-    input_qos = LaunchConfiguration('input_qos')
-    output_qos = LaunchConfiguration('output_qos')
-
-    keep_aspect_ratio = LaunchConfiguration('keep_aspect_ratio')
-    crop_mode = LaunchConfiguration('crop_mode')
-    encoding_desired = LaunchConfiguration('encoding_desired')
     input_encoding = LaunchConfiguration('input_encoding')
-    final_tensor_name = LaunchConfiguration('final_tensor_name')
 
     image_mean = LaunchConfiguration('image_mean')
     image_stddev = LaunchConfiguration('image_stddev')
-    num_blocks = LaunchConfiguration('num_blocks')
 
     image_input_topic = LaunchConfiguration('image_input_topic', default='image')
     camera_info_input_topic = LaunchConfiguration('camera_info_input_topic', default='camera_info')
@@ -68,16 +61,6 @@ def launch_setup(context, *args, **kwargs):
     )
     dnn_image_encoder_namespace = LaunchConfiguration('dnn_image_encoder_namespace')
 
-    resize_factor = 1.0
-    if not enable_padding:
-        width_scalar = input_image_width / network_image_width
-        height_scalar = input_image_height / network_image_height
-        if width_scalar != height_scalar:
-            resize_factor = min(width_scalar, height_scalar)
-
-    resize_image_width = int(network_image_width * resize_factor)
-    resize_image_height = int(network_image_height * resize_factor)
-
     # If we do not attach to a shared component container we have to create our own container.
     dnn_image_encoder_container = Node(
         name=component_container_name_arg,
@@ -87,130 +70,34 @@ def launch_setup(context, *args, **kwargs):
         condition=UnlessCondition(attach_to_shared_component_container_arg),
     )
 
+    dnn_image_encoder_node = ComposableNode(
+        name='dnn_image_encoder_node',
+        package='isaac_ros_dnn_image_encoder',
+        plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
+        namespace=dnn_image_encoder_namespace,
+        parameters=[{
+            'input_image_width': input_image_width,
+            'input_image_height': input_image_height,
+            'network_image_width': network_image_width,
+            'network_image_height': network_image_height,
+            'input_encoding': input_encoding,
+            'image_mean': image_mean,
+            'image_stddev': image_stddev,
+            'enable_padding': enable_padding,
+            'tensor_output_topic': tensor_output_topic,
+            'dnn_image_encoder_namespace': dnn_image_encoder_namespace,
+            'tensor_name': tensor_name,
+        }],
+        remappings=[
+            ('image', image_input_topic),
+            ('tensors', tensor_output_topic),
+            ('camera_info', camera_info_input_topic),
+        ],
+    )
+
     load_composable_nodes = LoadComposableNodes(
         target_container=component_container_name_arg,
-        composable_node_descriptions=[
-            ComposableNode(
-                name='resize_node',
-                package='isaac_ros_image_proc',
-                plugin='nvidia::isaac_ros::image_proc::ResizeNode',
-                parameters=[
-                    {
-                        'input_qos': input_qos,
-                        'output_width': resize_image_width,
-                        'output_height': resize_image_height,
-                        'num_blocks': num_blocks,
-                        'keep_aspect_ratio': keep_aspect_ratio,
-                        'encoding_desired': input_encoding,
-                    }
-                ],
-                remappings=[
-                    ('image', image_input_topic),
-                    ('camera_info', camera_info_input_topic),
-                ],
-            ),
-            ComposableNode(
-                name='image_format_converter_node',
-                package='isaac_ros_image_proc',
-                plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
-                parameters=[
-                    {
-                        'image_width': network_image_width,
-                        'image_height': network_image_height,
-                        'encoding_desired': encoding_desired,
-                    }
-                ],
-                remappings=[
-                    ('image_raw', 'resize/image'),
-                    ('image', 'converted/image'),
-                ],
-            ),
-            ComposableNode(
-                name='crop_node',
-                package='isaac_ros_image_proc',
-                plugin='nvidia::isaac_ros::image_proc::CropNode',
-                parameters=[
-                    {
-                        'input_width': resize_image_width,
-                        'input_height': resize_image_height,
-                        'crop_width': network_image_width,
-                        'crop_height': network_image_height,
-                        'num_blocks': num_blocks,
-                        'crop_mode': crop_mode,
-                        'roi_top_left_x': int((resize_image_width - network_image_width) / 2.0),
-                        'roi_top_left_y': int((resize_image_height - network_image_height) / 2.0),
-                    }
-                ],
-                remappings=[
-                    ('image', 'converted/image'),
-                    ('camera_info', 'resize/camera_info'),
-                ],
-            ),
-
-            ComposableNode(
-                name='image_to_tensor',
-                package='isaac_ros_tensor_proc',
-                plugin='nvidia::isaac_ros::dnn_inference::ImageToTensorNode',
-                parameters=[
-                    {
-                        'scale': True,
-                        'tensor_name': 'image',
-                    }
-                ],
-                remappings=[
-                    ('image', 'crop/image'),
-                    ('tensor', 'image_tensor'),
-                ],
-            ),
-            ComposableNode(
-                name='normalize_node',
-                package='isaac_ros_tensor_proc',
-                plugin='nvidia::isaac_ros::dnn_inference::ImageTensorNormalizeNode',
-                parameters=[
-                    {
-                        'mean': image_mean,
-                        'stddev': image_stddev,
-                        'input_tensor_name': 'image',
-                        'output_tensor_name': 'image'
-                    }
-                ],
-                remappings=[
-                    ('tensor', 'image_tensor'),
-                ],
-            ),
-            ComposableNode(
-                name='interleaved_to_planar_node',
-                package='isaac_ros_tensor_proc',
-                plugin='nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode',
-                parameters=[
-                    {
-                        'input_tensor_shape': [network_image_height, network_image_width, 3],
-                        'num_blocks': num_blocks,
-                    }
-                ],
-                remappings=[
-                    ('interleaved_tensor', 'normalized_tensor'),
-                ],
-            ),
-            ComposableNode(
-                name='reshape_node',
-                package='isaac_ros_tensor_proc',
-                plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
-                parameters=[
-                    {
-                        'output_qos': output_qos,
-                        'output_tensor_name': final_tensor_name,
-                        'input_tensor_shape': [3, network_image_height, network_image_width],
-                        'output_tensor_shape': [1, 3, network_image_height, network_image_width],
-                        'num_blocks': num_blocks,
-                    }
-                ],
-                remappings=[
-                    ('tensor', 'planar_tensor'),
-                    ('reshaped_tensor', tensor_output_topic),
-                ],
-            ),
-        ],
+        composable_node_descriptions=[dnn_image_encoder_node],
     )
 
     final_launch = GroupAction(
@@ -291,19 +178,14 @@ def generate_launch_description():
             description='The desired image format encoding',
         ),
         DeclareLaunchArgument(
-            'encoding_desired',
-            default_value='rgb8',
-            description='The desired image format encoding',
-        ),
-        DeclareLaunchArgument(
-            'final_tensor_name',
-            default_value='input_tensor',
-            description='The tensor name of the output of image encoder',
-        ),
-        DeclareLaunchArgument(
             'dnn_image_encoder_namespace',
             default_value='dnn_image_encoder',
             description='The namespace to put the DNN image encoder under',
+        ),
+        DeclareLaunchArgument(
+            'tensor_name',
+            default_value='output_tensor',
+            description='The name of the output tensor',
         ),
     ]
 

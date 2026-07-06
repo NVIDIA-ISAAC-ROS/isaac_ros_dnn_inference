@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ ament_auto_find_build_dependencies()
 
 # Interleaved to planar
 ament_auto_add_library(interleaved_to_planar_node SHARED src/interleaved_to_planar_node.cpp)
+target_link_libraries(interleaved_to_planar_node cvcuda)
 rclcpp_components_register_nodes(interleaved_to_planar_node
   "nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode")
 set(node_plugins
@@ -39,6 +40,8 @@ set_target_properties(interleaved_to_planar_node PROPERTIES
 
 # Reshape
 ament_auto_add_library(reshape_node SHARED src/reshape_node.cpp)
+ament_target_dependencies(reshape_node rclcpp rclcpp_components isaac_ros_cvcuda_utils)
+target_link_libraries(reshape_node cvcuda)
 rclcpp_components_register_nodes(reshape_node
   "nvidia::isaac_ros::dnn_inference::ReshapeNode")
 set(node_plugins
@@ -142,4 +145,4 @@ ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path
 include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
 generate_version_info(${PROJECT_NAME})
 
-ament_auto_package(INSTALL_TO_SHARE config)
+ament_auto_package(INSTALL_TO_SHARE)

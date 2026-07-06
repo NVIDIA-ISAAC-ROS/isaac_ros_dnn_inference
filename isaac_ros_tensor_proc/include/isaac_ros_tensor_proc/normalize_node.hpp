@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,13 @@
 #include <string>
 #include <vector>
 
-#include "isaac_ros_nitros/nitros_node.hpp"
+#include "cvcuda/OpNormalize.hpp"
+#include "cvcuda/OpConvertTo.hpp"
+#include "isaac_ros_common/cuda_stream.hpp"
+#include "isaac_ros_nitros_image_type/nitros_image.hpp"
+#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
+#include "isaac_ros_nitros/types/cuda_memory_pool.hpp"
+#include "nvcv/Tensor.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 namespace nvidia
@@ -30,23 +36,41 @@ namespace isaac_ros
 namespace dnn_inference
 {
 
-class NormalizeNode : public nitros::NitrosNode
+class NormalizeNode : public rclcpp::Node
 {
 public:
-  explicit NormalizeNode(const rclcpp::NodeOptions & = rclcpp::NodeOptions());
-  ~NormalizeNode() = default;
-
-  void preLoadGraphCallback() override;
-  void postLoadGraphCallback() override;
+  explicit NormalizeNode(const rclcpp::NodeOptions & options);
+  ~NormalizeNode();
 
 private:
+  void ImageSubCallback(const nvidia::isaac_ros::nitros::NitrosImage::SharedPtr msg);
+
+  // Parameters
   const std::vector<double> image_mean_;
   const std::vector<double> image_stddev_;
   uint16_t input_image_width_;
   uint16_t input_image_height_;
-  int64_t num_blocks_;
   std::string output_tensor_name_;
+  const int64_t memory_pool_block_size_;
+  const int64_t memory_pool_num_blocks_;
+  const rclcpp::QoS input_qos_;
+  const rclcpp::QoS output_qos_;
+
+  nvcv::Tensor mean_;
+  nvcv::Tensor stddev_;
+
+  // Subscribers and publishers
+  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosImage>::SharedPtr image_sub_;
+  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr tensor_list_pub_;
+
+  // Resources
+  ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
+  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
+
+  cvcuda::Normalize normalize_op_;
+  cvcuda::ConvertTo convert_to_op_;
 };
+
 }  // namespace dnn_inference
 }  // namespace isaac_ros
 }  // namespace nvidia
