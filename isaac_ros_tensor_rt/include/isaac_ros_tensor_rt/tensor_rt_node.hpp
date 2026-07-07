@@ -36,7 +36,6 @@
 #include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_view.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 
 using StringList = std::vector<std::string>;
@@ -61,11 +60,11 @@ public:
   TensorRTNode & operator=(const TensorRTNode &) = delete;
 
   // Callback for processing input tensor list
-  void InputTensorCallback(const nitros::NitrosTensorListView & tensor_list);
+  void InputTensorCallback(const nitros::NitrosTensorList::ConstSharedPtr tensor_list);
 
   // Method to perform TensorRT inference
   nitros::NitrosTensorList DoInference(
-    const nvidia::isaac_ros::nitros::NitrosTensorListView & input_tensor_list);
+    const nvidia::isaac_ros::nitros::NitrosTensorList & input_tensor_list);
 
   // Initialize TensorRT engine and related components
   void InitializeTensorRTEngine();
@@ -102,27 +101,29 @@ private:
   const int32_t max_batch_size_;
   const bool enable_fp16_;
   const bool relaxed_dimension_check_;
-  const int64_t num_blocks_;
+  const int64_t memory_pool_block_size_;
+  const int64_t memory_pool_num_blocks_;
+  const int16_t input_queue_size_;
+  const int16_t output_queue_size_;
 
-  // Managed NITROS subscriber for input tensors
-  std::shared_ptr<nvidia::isaac_ros::nitros::ManagedNitrosSubscriber<
-      nvidia::isaac_ros::nitros::NitrosTensorListView>> input_sub_;
+  // NITROS subscriber for input tensors
+  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr input_sub_;
 
-  // Managed NITROS publisher for output tensors
-  std::shared_ptr<nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
-      nvidia::isaac_ros::nitros::NitrosTensorList>> output_pub_;
+  // NITROS publisher for output tensors
+  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr output_pub_;
 
   // TensorRT inference engine
   std::unique_ptr<nvinfer1::ICudaEngine> cuda_engine_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_;
   std::unique_ptr<nvinfer1::IExecutionContext> context_;
 
-  // CUDA stream for inference
-  cudaStream_t cuda_stream_;
-
   // Binding information
   std::unordered_map<std::string, size_t> output_binding_infos_;
   std::unordered_map<std::string, nvinfer1::Dims> input_binding_dims_;
+
+  // CUDA resources
+  ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
+  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
 };
 
 }  // namespace dnn_inference

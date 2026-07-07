@@ -20,15 +20,15 @@
 #include <cuda_runtime.h>
 
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
-#include "isaac_ros_common/cuda_stream.hpp"
-#include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
 namespace nvidia
@@ -91,7 +91,10 @@ TritonNode::TritonNode(const rclcpp::NodeOptions & options)
   output_tensor_names_(declare_parameter<StringList>("output_tensor_names", StringList())),
   output_binding_names_(declare_parameter<StringList>("output_binding_names", StringList())),
   output_tensor_formats_(declare_parameter<StringList>("output_tensor_formats", StringList())),
-  log_level_(declare_parameter<int>("log_level", 0))
+  log_level_(declare_parameter<int>("log_level", 0)),
+  backend_directory_(declare_parameter<std::string>("backend_directory", "")),
+  input_queue_size_(declare_parameter<int16_t>("input_queue_size", 10)),
+  output_queue_size_(declare_parameter<int16_t>("output_queue_size", 10))
 {
   RCLCPP_DEBUG(get_logger(), "[TritonNode] Constructing Triton inference server wrapper");
 
@@ -116,6 +119,9 @@ TritonNode::TritonNode(const rclcpp::NodeOptions & options)
   if (log_level_ < 0 || log_level_ > 3) {
     throw std::invalid_argument("[TritonNode] Invalid triton_logging_level");
   }
+  if (input_queue_size_ <= 0 || output_queue_size_ <= 0) {
+    throw std::invalid_argument("[TritonNode] Queue sizes must be positive");
+  }
 
   // Validate tensor configuration consistency
   if (input_tensor_names_.size() != input_binding_names_.size()) {
@@ -133,8 +139,10 @@ TritonNode::TritonNode(const rclcpp::NodeOptions & options)
     throw std::invalid_argument("Output tensor names and binding names count mismatch");
   }
 
-  input_qos_ = ::isaac_ros::common::AddQosParameter(*this, "DEFAULT", "input_qos");
-  output_qos_ = ::isaac_ros::common::AddQosParameter(*this, "DEFAULT", "output_qos");
+  const rclcpp::QoS input_qos = ::isaac_ros::common::AddQosParameter(
+    *this, "DEFAULT", "input_qos").keep_last(input_queue_size_);
+  const rclcpp::QoS output_qos = ::isaac_ros::common::AddQosParameter(
+    *this, "DEFAULT", "output_qos").keep_last(output_queue_size_);
 
   input_format_ = INPUT_DEFAULT_TENSOR_FORMAT;
   output_format_ = OUTPUT_DEFAULT_TENSOR_FORMAT;
@@ -149,28 +157,20 @@ TritonNode::TritonNode(const rclcpp::NodeOptions & options)
       output_format_.c_str());
   }
 
-  nitros_pub_ = std::make_shared<Nitros::ManagedNitrosPublisher<Nitros::NitrosTensorList>>(
-    this,
-    OUTPUT_TOPIC_NAME,
-    output_format_,
-    Nitros::NitrosDiagnosticsConfig{},
-    output_qos_);
-
-  nitros_sub_ = std::make_shared<Nitros::ManagedNitrosSubscriber<Nitros::NitrosTensorListView>>(
-    this,
-    INPUT_TOPIC_NAME,
-    input_format_,
+  // Create subscribers for input and output tensors
+  rclcpp::SubscriptionOptions sub_options;
+  sub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
+  rclcpp::PublisherOptions pub_options;
+  pub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
+  input_sub_ = create_subscription<nvidia::isaac_ros::nitros::NitrosTensorList>(
+    INPUT_TOPIC_NAME, input_qos,
     std::bind(&TritonNode::InputCallback, this, std::placeholders::_1),
-    Nitros::NitrosDiagnosticsConfig{},
-    input_qos_);
-
-  RCLCPP_INFO(get_logger(), "[TritonNode] Managed NITROS pub/sub initialized");
+    sub_options);
+  output_pub_ = create_publisher<nvidia::isaac_ros::nitros::NitrosTensorList>(
+    OUTPUT_TOPIC_NAME, output_qos, pub_options);
 
   // Initialize CUDA stream
-  CHECK_CUDA_ERROR(
-    ::nvidia::isaac_ros::common::initNamedCudaStream(
-      cuda_stream_, "isaac_ros_triton_node"),
-    "Error initializing CUDA stream");
+  cuda_stream_ = ::nvidia::isaac_ros::common::createCudaStream("TritonNode");
 
   // Initialize Triton server - must succeed
   if (!InitializeTritonServer()) {
@@ -186,14 +186,15 @@ TritonNode::TritonNode(const rclcpp::NodeOptions & options)
   RCLCPP_INFO(get_logger(), "[TritonNode] Triton node ready with model: %s", model_name_.c_str());
 }
 
-void TritonNode::InputCallback(const nvidia::isaac_ros::nitros::NitrosTensorListView & view)
+void TritonNode::InputCallback(
+  const nvidia::isaac_ros::nitros::NitrosTensorList::ConstSharedPtr tensor_list)
 {
   try {
     // Build output NitrosTensorList
     std_msgs::msg::Header header;
-    header.stamp.sec = view.GetTimestampSeconds();
-    header.stamp.nanosec = view.GetTimestampNanoseconds();
-    header.frame_id = view.GetFrameId();
+    header.stamp.sec = tensor_list->get_timestamp_sec();
+    header.stamp.nanosec = tensor_list->get_timestamp_nsec();
+    header.frame_id = tensor_list->get_frame_id();
 
     // Perform Triton inference - no fallback
     if (!triton_server_ready_) {
@@ -201,7 +202,7 @@ void TritonNode::InputCallback(const nvidia::isaac_ros::nitros::NitrosTensorList
       return;
     }
 
-    if (!DoTritonInference(view, header)) {
+    if (!DoTritonInference(*tensor_list, header)) {
       RCLCPP_ERROR(get_logger(), "[TritonNode] Triton inference failed, dropping input");
       return;
     }
@@ -279,6 +280,43 @@ bool TritonNode::InitializeTritonServer()
     TRITONSERVER_ServerOptionsSetLogInfo(server_options, enable_triton_logging_);
     TRITONSERVER_ServerOptionsSetStrictModelConfig(server_options, enable_strict_model_);
     TRITONSERVER_ServerOptionsSetServerId(server_options, "isaac_ros_triton_server");
+
+    // Resolve Triton backend directory: under Bazel the default path is absent;
+    // scan LD_LIBRARY_PATH for ".../tritonserver/lib" and use sibling "backends".
+    std::string effective_backend_dir = backend_directory_;
+    if (effective_backend_dir.empty()) {
+      const char * ldpath_env = std::getenv("LD_LIBRARY_PATH");
+      if (ldpath_env) {
+        std::istringstream ss(ldpath_env);
+        std::string entry;
+
+        while (std::getline(ss, entry, ':')) {
+          std::filesystem::path p(entry);
+          if (p.filename() == "lib" && p.parent_path().filename() == "tritonserver") {
+            auto candidate = p.parent_path() / "backends";
+            if (std::filesystem::exists(candidate)) {
+              effective_backend_dir = candidate.string();
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (!effective_backend_dir.empty()) {
+      err = TRITONSERVER_ServerOptionsSetBackendDirectory(
+        server_options, effective_backend_dir.c_str());
+      if (err != nullptr) {
+        RCLCPP_ERROR(get_logger(), "[TritonNode] Failed to set backend directory '%s': %s",
+                     effective_backend_dir.c_str(), TRITONSERVER_ErrorMessage(err));
+        TRITONSERVER_ErrorDelete(err);
+        return false;
+      }
+      RCLCPP_INFO(get_logger(), "[TritonNode] Using backend directory: %s",
+                  effective_backend_dir.c_str());
+    } else {
+      RCLCPP_WARN(get_logger(),
+        "[TritonNode] No backend directory resolved; Triton will use its compiled-in default");
+    }
 
     // Create Triton server
     TRITONSERVER_Server * server_ptr = nullptr;
@@ -394,7 +432,7 @@ void TritonNode::ShutdownTritonServer()
 }
 
 bool TritonNode::DoTritonInference(
-  const nvidia::isaac_ros::nitros::NitrosTensorListView & view,
+  const nvidia::isaac_ros::nitros::NitrosTensorList & tensor_list,
   const std_msgs::msg::Header & header)
 {
   std::lock_guard<std::mutex> lock(triton_mutex_);
@@ -406,11 +444,10 @@ bool TritonNode::DoTritonInference(
 
   try {
     // Validate input tensors
-    const auto tensors = view.GetAllTensor();
-    if (tensors.size() != input_tensor_names_.size()) {
+    if (tensor_list.num_tensors() != input_tensor_names_.size()) {
       RCLCPP_ERROR(get_logger(),
         "[TritonNode] Expected %zu input tensors, got %zu",
-        input_tensor_names_.size(), tensors.size());
+        input_tensor_names_.size(), tensor_list.num_tensors());
       return false;
     }
 
@@ -419,12 +456,12 @@ bool TritonNode::DoTritonInference(
     list_builder.WithHeader(header);
 
     // Execute inference using Triton C API
-    if (!ExecuteInference(view, list_builder)) {
+    if (!ExecuteInference(tensor_list, list_builder)) {
       RCLCPP_ERROR(get_logger(), "[TritonNode] Triton inference execution failed");
       return false;
     }
 
-    nitros_pub_->publish(list_builder.Build());
+    output_pub_->publish(list_builder.Build());
     RCLCPP_DEBUG(get_logger(), "[TritonNode] Triton inference completed successfully");
     return true;
   } catch (const std::exception & e) {
@@ -652,7 +689,7 @@ bool TritonNode::ProcessInferenceResponse(
 
     // Copy data to GPU
     void * gpu_buffer = nullptr;
-    cudaError_t cuda_err = cudaMallocAsync(&gpu_buffer, output_info->byte_size, cuda_stream_);
+    cudaError_t cuda_err = cudaMallocAsync(&gpu_buffer, output_info->byte_size, *cuda_stream_);
     if (cuda_err != cudaSuccess) {
       RCLCPP_ERROR(get_logger(), "[TritonNode] CUDA malloc failed: %s",
         cudaGetErrorString(cuda_err));
@@ -661,23 +698,23 @@ bool TritonNode::ProcessInferenceResponse(
 
     if (output_info->memory_type == TRITONSERVER_MEMORY_GPU) {
       cuda_err = cudaMemcpyAsync(gpu_buffer, output_info->buffer, output_info->byte_size,
-                            cudaMemcpyDeviceToDevice);
+                            cudaMemcpyDeviceToDevice, *cuda_stream_);
     } else {
       cuda_err = cudaMemcpyAsync(gpu_buffer, output_info->buffer, output_info->byte_size,
-                            cudaMemcpyHostToDevice);
+                            cudaMemcpyHostToDevice, *cuda_stream_);
     }
     if (cuda_err != cudaSuccess) {
       RCLCPP_ERROR(get_logger(), "[TritonNode] CUDA memcpy failed: %s",
         cudaGetErrorString(cuda_err));
-      cudaFree(gpu_buffer);
+      cudaFreeAsync(gpu_buffer, *cuda_stream_);
       return false;
     }
 
-    cuda_err = cudaStreamSynchronize(cuda_stream_);
+    cuda_err = cudaStreamSynchronize(*cuda_stream_);
     if (cuda_err != cudaSuccess) {
       RCLCPP_ERROR(get_logger(), "[TritonNode] CUDA stream synchronization failed: %s",
         cudaGetErrorString(cuda_err));
-      cudaFree(gpu_buffer);
+      cudaFreeAsync(gpu_buffer, *cuda_stream_);
       return false;
     }
 
@@ -685,8 +722,8 @@ bool TritonNode::ProcessInferenceResponse(
       .WithShape(Nitros::NitrosTensorShape(output_info->dims))
       .WithDataType(TritonToNitrosType(output_info->dtype))
       .WithData(gpu_buffer)
-      .WithReleaseCallback([gpu_buffer]() {
-          cudaFree(gpu_buffer);
+      .WithReleaseCallback([gpu_buffer, stream = *cuda_stream_]() {
+          cudaFreeAsync(gpu_buffer, stream);
         })
       .Build();
     list_builder.AddTensor(tensor_name, nitros_tensor);
@@ -695,7 +732,7 @@ bool TritonNode::ProcessInferenceResponse(
 }
 
 bool TritonNode::ExecuteInference(
-  const nvidia::isaac_ros::nitros::NitrosTensorListView & view,
+  const nvidia::isaac_ros::nitros::NitrosTensorList & tensor_list,
   nvidia::isaac_ros::nitros::NitrosTensorListBuilder & list_builder)
 {
   auto server = reinterpret_cast<TRITONSERVER_Server *>(triton_server_.get());
@@ -726,20 +763,21 @@ bool TritonNode::ExecuteInference(
 
   try {
     // Add input tensors
-    const auto tensors = view.GetAllTensor();
-    for (size_t i = 0; i < tensors.size() && i < input_binding_names_.size(); ++i) {
-      const auto & tensor = tensors[i];
+    for (size_t i = 0; i < tensor_list.num_tensors() && i < input_binding_names_.size(); ++i) {
+      std::string tensor_name = input_tensor_names_[i];
+      const Nitros::NitrosTensor::ConstSharedPtr tensor =
+        tensor_list.get_tensor_by_name(tensor_name);
 
       // Get tensor dimensions
       std::vector<int64_t> dims;
-      for (size_t d = 0; d < tensor.GetRank(); ++d) {
-        dims.push_back(static_cast<int64_t>(tensor.GetDimension(d)));
+      for (size_t j = 0; j < tensor->shape().rank(); ++j) {
+        dims.push_back(static_cast<int64_t>(tensor->shape().dims()[j]));
       }
-      std::string input_binding_name = input_bindings_map_[tensor.GetName()];
+      std::string input_binding_name = input_bindings_map_[tensor_name];
       // Use FP32 as default data type (can be enhanced to detect from tensor metadata)
       TRITONSERVER_DataType dtype = TRITONSERVER_TYPE_FP32;
-      switch (static_cast<int>(tensor.GetElementType())) {
-        case static_cast<int>(isaac_ros::nitros::NitrosDataType::kInt8):
+      switch (static_cast<int>(tensor->data_type())) {
+        case static_cast<int>(Nitros::NitrosDataType::kInt8):
           dtype = TRITONSERVER_TYPE_INT8;
           break;
         case static_cast<int>(isaac_ros::nitros::NitrosDataType::kUnsigned8):
@@ -779,9 +817,10 @@ bool TritonNode::ExecuteInference(
       }
 
       // Add tensor data
-      void * buffer = const_cast<void *>(reinterpret_cast<const void *>(tensor.GetBuffer()));
+      auto input_handle = tensor->get_read_handle(*cuda_stream_);
+      const void * buffer = input_handle.get_ptr();
       err = TRITONSERVER_InferenceRequestAppendInputData(
-        request, input_binding_name.c_str(), buffer, tensor.GetTensorSize(),
+        request, input_binding_name.c_str(), const_cast<void *>(buffer), tensor->tensor_size(),
         TRITONSERVER_MEMORY_GPU, 0);
       if (err != nullptr) {
         RCLCPP_ERROR(get_logger(), "[TritonNode] Failed to add tensor data to request: %s",
@@ -837,7 +876,7 @@ bool TritonNode::ExecuteInference(
     }
 
     err = TRITONSERVER_InferenceRequestSetResponseCallback(
-      request, allocator, reinterpret_cast<void *>(&cuda_stream_), InferenceComplete,
+      request, allocator, reinterpret_cast<void *>(cuda_stream_.get()), InferenceComplete,
       reinterpret_cast<void *>(promise.get()));
     if (err != nullptr) {
       RCLCPP_ERROR(get_logger(), "[TritonNode] Failed to set response callback: %s",
@@ -865,7 +904,6 @@ bool TritonNode::ExecuteInference(
       TRITONSERVER_InferenceResponseDelete(completed_response);
       return false;
     }
-    RCLCPP_DEBUG(get_logger(), "[TritonNode] Inference request callback completed");
 
     bool ret = ProcessInferenceResponse(completed_response, list_builder, output_bindings_map_,
       output_tensor_names_);
@@ -877,7 +915,6 @@ bool TritonNode::ExecuteInference(
 
     release_future.get();
     TRITONSERVER_InferenceResponseDelete(completed_response);
-    RCLCPP_DEBUG(get_logger(), "[TritonNode] Inference response processed");
 
     return true;
   } catch (const std::exception & e) {

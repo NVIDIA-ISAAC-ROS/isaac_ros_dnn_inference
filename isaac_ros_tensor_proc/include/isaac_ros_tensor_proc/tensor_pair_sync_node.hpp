@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,11 +27,8 @@
 #include "message_filters/sync_policies/exact_time.h"
 
 #include "isaac_ros_common/qos.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_message_filters_subscriber.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_view.hpp"
 
 
 namespace nvidia
@@ -40,11 +37,10 @@ namespace isaac_ros
 {
 namespace dnn_inference
 {
-
 class TensorPairSyncNode : public rclcpp::Node
 {
 public:
-  explicit TensorPairSyncNode(const rclcpp::NodeOptions options = rclcpp::NodeOptions());
+  explicit TensorPairSyncNode(const rclcpp::NodeOptions & options);
 
   ~TensorPairSyncNode();
 
@@ -59,34 +55,34 @@ private:
     const nvidia::isaac_ros::nitros::NitrosTensorList::ConstSharedPtr & msg1,
     const nvidia::isaac_ros::nitros::NitrosTensorList::ConstSharedPtr & msg2);
 
-  // QOS settings
-  rclcpp::QoS input_qos_;
-  rclcpp::QoS output_qos_;
-
-  // Subscriptions to input NitrosTensorListView messages
-  nvidia::isaac_ros::nitros::message_filters::Subscriber<
-    nvidia::isaac_ros::nitros::NitrosTensorListView> tensor1_nitros_sub_;
-  nvidia::isaac_ros::nitros::message_filters::Subscriber<
-    nvidia::isaac_ros::nitros::NitrosTensorListView> tensor2_nitros_sub_;
-
-  // Message filter synchronizer
-  using ExactPolicy = message_filters::sync_policies::ExactTime<
-    nvidia::isaac_ros::nitros::NitrosTensorList,
-    nvidia::isaac_ros::nitros::NitrosTensorList>;
-  message_filters::Synchronizer<ExactPolicy> sync_;
-
-  // Publisher for output NitrosTensorList messages
-  std::shared_ptr<nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
-      nvidia::isaac_ros::nitros::NitrosTensorList>> nitros_pub_;
-
+  // Parameters
+  int64_t memory_pool_block_size_;
+  int64_t memory_pool_num_blocks_;
+  int64_t input_queue_size_;
+  int64_t output_queue_size_;
   // Tensor names for input and output
   std::string input_tensor1_name_{};
   std::string input_tensor2_name_{};
   std::string output_tensor1_name_{};
   std::string output_tensor2_name_{};
 
+  ::message_filters::Subscriber<
+    nvidia::isaac_ros::nitros::NitrosTensorList> tensor1_nitros_sub_;
+  ::message_filters::Subscriber<
+    nvidia::isaac_ros::nitros::NitrosTensorList> tensor2_nitros_sub_;
+
+  // Message filter synchronizer
+  using ExactPolicy = ::message_filters::sync_policies::ExactTime<
+    nvidia::isaac_ros::nitros::NitrosTensorList,
+    nvidia::isaac_ros::nitros::NitrosTensorList>;
+  ::message_filters::Synchronizer<ExactPolicy> sync_;
+
+  // Publisher for output NitrosTensorList messages
+  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr nitros_pub_;
+
   // CUDA stream for GPU operations
-  cudaStream_t stream_;
+  ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
+  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
 };
 
 }  // namespace dnn_inference

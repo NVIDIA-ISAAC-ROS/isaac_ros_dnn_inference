@@ -46,7 +46,8 @@ def generate_test_description():
                                    DIMENSION_CHANNELS],
             'output_tensor_shape': [1, DIMENSION_HEIGHT, DIMENSION_WIDTH,
                                     DIMENSION_CHANNELS],
-            'output_tensor_name': 'output',
+            'output_tensor_layout': 'NHWC',
+            'input_tensor_layout': 'HWC',
         }],
         remappings=[
             ('reshaped_tensor', 'tensors')
@@ -54,7 +55,7 @@ def generate_test_description():
 
     return IsaacROSDnnReshapeNodeTest.generate_test_description([
         ComposableNodeContainer(
-            name='tensor_rt_container',
+            name='reshape_container',
             package='rclcpp_components',
             executable='component_container_mt',
             composable_node_descriptions=[reshape_node],

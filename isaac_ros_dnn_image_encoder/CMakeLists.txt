@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,10 +23,12 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake_auto REQUIRED)
+find_package(CUDAToolkit REQUIRED)
 ament_auto_find_build_dependencies()
 
 # DnnImageEncoderNode
 ament_auto_add_library(dnn_image_encoder_node SHARED src/dnn_image_encoder_node.cpp)
+target_link_libraries(dnn_image_encoder_node cvcuda nvcv_types CUDA::nvtx3)
 rclcpp_components_register_nodes(dnn_image_encoder_node "nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode")
 set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode;$<TARGET_FILE:dnn_image_encoder_node>\n")
 set_target_properties(dnn_image_encoder_node PROPERTIES
@@ -62,8 +64,10 @@ if(BUILD_TESTING)
 
   find_package(launch_testing_ament_cmake REQUIRED)
   add_launch_test(test/isaac_ros_dnn_image_encoder_test.py)
+  add_launch_test(test/isaac_ros_dnn_image_encoder_launch_test.py)
   add_launch_test(test/isaac_ros_dnn_image_encoder_image_crop_test.py)
   add_launch_test(test/isaac_ros_dnn_image_encoder_image_norm_test.py)
+  add_launch_test(test/isaac_ros_dnn_image_encoder_separate_nodes_test.py)
 endif()
 
 
@@ -72,4 +76,4 @@ ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path
 include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
 generate_version_info(${PROJECT_NAME})
 
-ament_auto_package(INSTALL_TO_SHARE config launch)
+ament_auto_package(INSTALL_TO_SHARE launch)

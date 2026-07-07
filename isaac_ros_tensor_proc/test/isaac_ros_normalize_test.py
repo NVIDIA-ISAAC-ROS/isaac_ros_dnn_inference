@@ -127,6 +127,9 @@ class IsaacROSNormalizeNodeTest(IsaacROSBaseTest):
             normalized_tensor = normalized_tensor.reshape(DIMENSION_HEIGHT,
                                                           DIMENSION_WIDTH,
                                                           DIMENSION_CHANNEL)
+            self.assertEqual(normalized_tensor.shape, (DIMENSION_HEIGHT, DIMENSION_WIDTH,
+                                                       DIMENSION_CHANNEL),
+                             'Normalized tensor shape mismatch')
             for c in range(DIMENSION_CHANNEL):
                 self.assertTrue(
                     (np.round(normalized_tensor[:, :, c], 1) == EXPECTED_VALS[c]).all()
