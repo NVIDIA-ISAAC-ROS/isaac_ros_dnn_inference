@@ -30,8 +30,6 @@
 
 #include "isaac_ros_common/qos.hpp"
 #include "isaac_ros_common/cuda_stream.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"

@@ -25,9 +25,35 @@ endif()
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
+find_package(CUDAToolkit REQUIRED)
+find_package(isaac_ros_common REQUIRED)
+find_package(isaac_ros_cvcuda_utils REQUIRED)
+find_package(isaac_ros_nitros REQUIRED)
+find_package(isaac_ros_nitros_image_type REQUIRED)
+find_package(isaac_ros_nitros_tensor_list_type REQUIRED)
+find_package(isaac_ros_tensor_list_interfaces REQUIRED)
+find_library(ISAAC_ROS_COMMON_LIBRARY isaac_ros_common REQUIRED)
+find_library(ISAAC_ROS_CVCUDA_UTILS_LIBRARY isaac_ros_cvcuda_utils REQUIRED)
+find_library(ISAAC_ROS_NITROS_LIBRARY isaac_ros_nitros REQUIRED)
+find_library(ISAAC_ROS_NITROS_IMAGE_TYPE_LIBRARY isaac_ros_nitros_image_type REQUIRED)
+find_library(ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY
+  isaac_ros_nitros_tensor_list_type REQUIRED)
+find_library(ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY
+  isaac_ros_tensor_list_interfaces__rosidl_typesupport_cpp REQUIRED)
+
+set(TENSOR_PROC_NITROS_LIBRARIES
+  CUDA::cudart
+  ${ISAAC_ROS_COMMON_LIBRARY}
+  ${ISAAC_ROS_CVCUDA_UTILS_LIBRARY}
+  ${ISAAC_ROS_NITROS_LIBRARY}
+  ${ISAAC_ROS_NITROS_IMAGE_TYPE_LIBRARY}
+  ${ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY}
+  ${ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY}
+)
+
 # Interleaved to planar
 ament_auto_add_library(interleaved_to_planar_node SHARED src/interleaved_to_planar_node.cpp)
-target_link_libraries(interleaved_to_planar_node cvcuda)
+target_link_libraries(interleaved_to_planar_node cvcuda ${TENSOR_PROC_NITROS_LIBRARIES})
 rclcpp_components_register_nodes(interleaved_to_planar_node
   "nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode")
 set(node_plugins
@@ -41,7 +67,7 @@ set_target_properties(interleaved_to_planar_node PROPERTIES
 # Reshape
 ament_auto_add_library(reshape_node SHARED src/reshape_node.cpp)
 ament_target_dependencies(reshape_node rclcpp rclcpp_components isaac_ros_cvcuda_utils)
-target_link_libraries(reshape_node cvcuda)
+target_link_libraries(reshape_node cvcuda ${TENSOR_PROC_NITROS_LIBRARIES})
 rclcpp_components_register_nodes(reshape_node
   "nvidia::isaac_ros::dnn_inference::ReshapeNode")
 set(node_plugins
@@ -57,7 +83,7 @@ rclcpp_components_register_nodes(image_to_tensor_node
   "nvidia::isaac_ros::dnn_inference::ImageToTensorNode")
 set(node_plugins
   "${node_plugins}nvidia::isaac_ros::dnn_inference::ImageToTensorNode;$<TARGET_FILE:image_to_tensor_node>\n")
-target_link_libraries(image_to_tensor_node cvcuda nvcv_types)
+target_link_libraries(image_to_tensor_node cvcuda nvcv_types ${TENSOR_PROC_NITROS_LIBRARIES})
 set_target_properties(image_to_tensor_node PROPERTIES
   BUILD_WITH_INSTALL_RPATH TRUE
   BUILD_RPATH_USE_ORIGIN TRUE
@@ -69,7 +95,8 @@ ament_auto_add_library(image_tensor_normalize_node SHARED src/image_tensor_norma
     "nvidia::isaac_ros::dnn_inference::ImageTensorNormalizeNode")
   set(node_plugins
     "${node_plugins}nvidia::isaac_ros::dnn_inference::ImageTensorNormalizeNode;$<TARGET_FILE:image_tensor_normalize_node>\n")
-  target_link_libraries(image_tensor_normalize_node cvcuda nvcv_types)
+  target_link_libraries(
+    image_tensor_normalize_node cvcuda nvcv_types ${TENSOR_PROC_NITROS_LIBRARIES})
   set_target_properties(image_tensor_normalize_node PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     BUILD_RPATH_USE_ORIGIN TRUE
@@ -81,6 +108,7 @@ ament_auto_add_library(normalize_node SHARED src/normalize_node.cpp)
     "nvidia::isaac_ros::dnn_inference::NormalizeNode")
   set(node_plugins
     "${node_plugins}nvidia::isaac_ros::dnn_inference::NormalizeNode;$<TARGET_FILE:normalize_node>\n")
+  target_link_libraries(normalize_node cvcuda nvcv_types ${TENSOR_PROC_NITROS_LIBRARIES})
   set_target_properties(normalize_node PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     BUILD_RPATH_USE_ORIGIN TRUE
@@ -92,6 +120,7 @@ ament_auto_add_library(tensor_pair_sync_node SHARED src/tensor_pair_sync_node.cp
   "nvidia::isaac_ros::dnn_inference::TensorPairSyncNode")
   set(node_plugins
   "${node_plugins}nvidia::isaac_ros::dnn_inference::TensorPairSyncNode;$<TARGET_FILE:tensor_pair_sync_node>\n")
+  target_link_libraries(tensor_pair_sync_node ${TENSOR_PROC_NITROS_LIBRARIES})
   set_target_properties(tensor_pair_sync_node PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     BUILD_RPATH_USE_ORIGIN TRUE

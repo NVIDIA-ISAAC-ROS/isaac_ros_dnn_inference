@@ -33,7 +33,7 @@
 #include "cvcuda/OpReformat.hpp"
 #include "cvcuda/OpResize.hpp"
 #include "isaac_ros_common/cuda_stream.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_message_filters_subscriber.hpp"
+#include "isaac_ros_nitros/types/nitros_type_message_filter_traits.hpp"
 #include "isaac_ros_nitros_image_type/nitros_image.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 #include "nvcv/Tensor.hpp"
