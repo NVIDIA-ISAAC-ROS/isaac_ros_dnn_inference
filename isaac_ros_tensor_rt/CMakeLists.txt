@@ -26,11 +26,35 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 # Dependencies
+find_package(CUDAToolkit REQUIRED)
+find_package(isaac_ros_common REQUIRED)
+find_package(isaac_ros_nitros REQUIRED)
+find_package(isaac_ros_nitros_tensor_list_type REQUIRED)
+find_package(isaac_ros_tensor_list_interfaces REQUIRED)
 find_package(TENSORRT MODULE REQUIRED)
+find_library(ISAAC_ROS_COMMON_LIBRARY isaac_ros_common REQUIRED)
+find_library(ISAAC_ROS_NITROS_LIBRARY isaac_ros_nitros REQUIRED)
+find_library(ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY
+  isaac_ros_nitros_tensor_list_type REQUIRED)
+find_library(ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY
+  isaac_ros_tensor_list_interfaces__rosidl_typesupport_cpp REQUIRED)
+
+set(TENSOR_RT_NITROS_LIBRARIES
+  CUDA::cudart
+  ${ISAAC_ROS_COMMON_LIBRARY}
+  ${ISAAC_ROS_NITROS_LIBRARY}
+  ${ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY}
+  ${ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY}
+)
 
 # TensorRTNode
 ament_auto_add_library(tensor_rt_node SHARED src/tensor_rt_node.cpp)
-target_link_libraries(tensor_rt_node TENSORRT::nvinfer TENSORRT::nvinfer_plugin TENSORRT::nvonnxparser)
+target_link_libraries(tensor_rt_node
+  TENSORRT::nvinfer
+  TENSORRT::nvinfer_plugin
+  TENSORRT::nvonnxparser
+  ${TENSOR_RT_NITROS_LIBRARIES}
+)
 rclcpp_components_register_nodes(tensor_rt_node "nvidia::isaac_ros::dnn_inference::TensorRTNode")
 set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TensorRTNode;$<TARGET_FILE:tensor_rt_node>\n")
 set_target_properties(tensor_rt_node PROPERTIES

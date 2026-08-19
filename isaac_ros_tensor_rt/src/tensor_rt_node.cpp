@@ -27,7 +27,6 @@
 #include "NvInferPluginUtils.h"
 
 #include "isaac_ros_common/qos.hpp"
-#include "isaac_ros_nitros/types/nitros_type_manager.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_shape.hpp"
 

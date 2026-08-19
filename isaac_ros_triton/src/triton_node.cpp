@@ -282,7 +282,8 @@ bool TritonNode::InitializeTritonServer()
     TRITONSERVER_ServerOptionsSetServerId(server_options, "isaac_ros_triton_server");
 
     // Resolve Triton backend directory: under Bazel the default path is absent;
-    // scan LD_LIBRARY_PATH for ".../tritonserver/lib" and use sibling "backends".
+    // scan LD_LIBRARY_PATH for ".../tritonserver/{lib,lib64}" and use sibling
+    // "backends". Triton 2.60 installed to lib/, 2.69 (nv26.05) uses lib64/.
     std::string effective_backend_dir = backend_directory_;
     if (effective_backend_dir.empty()) {
       const char * ldpath_env = std::getenv("LD_LIBRARY_PATH");
@@ -292,7 +293,9 @@ bool TritonNode::InitializeTritonServer()
 
         while (std::getline(ss, entry, ':')) {
           std::filesystem::path p(entry);
-          if (p.filename() == "lib" && p.parent_path().filename() == "tritonserver") {
+          if ((p.filename() == "lib" || p.filename() == "lib64") &&
+            p.parent_path().filename() == "tritonserver")
+          {
             auto candidate = p.parent_path() / "backends";
             if (std::filesystem::exists(candidate)) {
               effective_backend_dir = candidate.string();

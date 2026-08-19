@@ -21,7 +21,7 @@ SPDX-License-Identifier: Apache-2.0
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>isaac_ros_tensor_rt</name>
-  <version>4.5.0</version>
+  <version>4.6.0</version>
   <description>DNN Inference support for Isaac ROS</description>
 
   <maintainer email="isaac-ros-maintainers@nvidia.com">Isaac ROS Maintainers</maintainer>
@@ -38,14 +38,17 @@ SPDX-License-Identifier: Apache-2.0
 
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>isaac_ros_nitros</depend>
+  <depend>isaac_ros_common</depend>
   <depend>isaac_ros_managed_nitros</depend>
   <depend>isaac_ros_nitros_tensor_list_type</depend>
+  <depend>isaac_ros_tensor_list_interfaces</depend>
 
   <depend>isaac-ros-cli</depend>
+  <depend>cuda-toolkit</depend>
   <depend>tensorrt</depend>
 
   <build_depend>ament_index_cpp</build_depend>
-  <build_depend>isaac_ros_common</build_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

@@ -24,6 +24,25 @@ endif()
 
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
+find_package(CUDAToolkit REQUIRED)
+find_package(isaac_ros_common REQUIRED)
+find_package(isaac_ros_nitros REQUIRED)
+find_package(isaac_ros_nitros_tensor_list_type REQUIRED)
+find_package(isaac_ros_tensor_list_interfaces REQUIRED)
+find_library(ISAAC_ROS_COMMON_LIBRARY isaac_ros_common REQUIRED)
+find_library(ISAAC_ROS_NITROS_LIBRARY isaac_ros_nitros REQUIRED)
+find_library(ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY
+  isaac_ros_nitros_tensor_list_type REQUIRED)
+find_library(ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY
+  isaac_ros_tensor_list_interfaces__rosidl_typesupport_cpp REQUIRED)
+
+set(TRITON_NITROS_LIBRARIES
+  CUDA::cudart
+  ${ISAAC_ROS_COMMON_LIBRARY}
+  ${ISAAC_ROS_NITROS_LIBRARY}
+  ${ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY}
+  ${ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY}
+)
 
 # Triton Server integration - always enabled
 include(FetchContent)
@@ -110,7 +129,12 @@ if(_LIB_COUNT GREATER 0)
     IMPORTED_LOCATION "${_TRITON_LIB_DIR}/libtritonserver.so"
     INTERFACE_INCLUDE_DIRECTORIES "${_TRITON_INC_DIR}"
   )
-  target_link_libraries(triton_node tritonserver::tritonserver dl pthread)
+  target_link_libraries(triton_node
+    ${TRITON_NITROS_LIBRARIES}
+    tritonserver::tritonserver
+    dl
+    pthread
+  )
 endif()
 rclcpp_components_register_nodes(triton_node "nvidia::isaac_ros::dnn_inference::TritonNode")
 set(
@@ -124,6 +148,7 @@ set_target_properties(triton_node PROPERTIES
 )
 
 if(BUILD_TESTING)
+  find_package(CUDAToolkit REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
   ament_lint_auto_find_test_dependencies()
@@ -139,10 +164,14 @@ if(BUILD_TESTING)
 
   # Gtest for triton node
   ament_add_gtest(triton_node_test test/triton_node_test.cpp)
-  target_link_libraries(triton_node_test triton_node)
+  target_link_libraries(triton_node_test
+    triton_node
+    ${TRITON_NITROS_LIBRARIES}
+  )
   target_include_directories(triton_node_test PUBLIC include/ ${_TRITON_INC_DIR})
   ament_target_dependencies(triton_node_test rclcpp)
   ament_target_dependencies(triton_node_test isaac_ros_nitros)
+  target_link_libraries(triton_node_test CUDA::cudart)
 
   # The FindPythonInterp and FindPythonLibs modules are removed
   if(POLICY CMP0148)
