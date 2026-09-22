@@ -20,9 +20,9 @@
 #include <string>
 #include <vector>
 
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_nitros/types/cuda_memory_pool.hpp"
 #include "cvcuda/OpReformat.hpp"
+#include "isaac_ros_common/cuda_stream.hpp"
+#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 namespace nvidia
@@ -31,7 +31,9 @@ namespace isaac_ros
 {
 namespace dnn_inference
 {
-using nvidia::isaac_ros::nitros::NitrosTensorList;
+
+using TensorList = isaac_ros_tensor_msgs::msg::TensorList;
+
 class ReshapeNode : public rclcpp::Node
 {
 public:
@@ -42,28 +44,21 @@ public:
   ReshapeNode(const ReshapeNode &) = delete;
 
 private:
-  void tensorSubCallback(const NitrosTensorList::SharedPtr msg);
+  void tensorSubCallback(const TensorList::SharedPtr msg);
 
-  // Parameters
   std::string input_tensor_layout_;
   std::string output_tensor_layout_;
   std::vector<int64_t> input_tensor_shape_;
   std::vector<int64_t> output_tensor_shape_;
   std::string output_tensor_name_;
   size_t batch_;
-  const int64_t memory_pool_block_size_;
-  const int64_t memory_pool_num_blocks_;
   const rclcpp::QoS input_qos_;
   const rclcpp::QoS output_qos_;
 
-  // Subscribers and publishers
-  rclcpp::Subscription<NitrosTensorList>::SharedPtr tensor_sub_;
-  rclcpp::Publisher<NitrosTensorList>::SharedPtr tensor_pub_;
+  rclcpp::Subscription<TensorList>::SharedPtr tensor_sub_;
+  rclcpp::Publisher<TensorList>::SharedPtr tensor_pub_;
 
-  // Resources
   ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
-  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
-
   cvcuda::Reformat reformat_op_;
 };
 

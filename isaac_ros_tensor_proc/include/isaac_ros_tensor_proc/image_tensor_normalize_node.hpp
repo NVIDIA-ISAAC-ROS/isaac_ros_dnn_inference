@@ -20,11 +20,10 @@
 
 #include <string>
 #include <vector>
-#include <memory>
 
 #include "cvcuda/OpNormalize.hpp"
-#include "isaac_ros_common/qos.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
+#include "isaac_ros_common/cuda_stream.hpp"
+#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
 #include "nvcv/Tensor.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -34,6 +33,9 @@ namespace isaac_ros
 {
 namespace dnn_inference
 {
+
+using TensorList = isaac_ros_tensor_msgs::msg::TensorList;
+
 class ImageTensorNormalizeNode : public rclcpp::Node
 {
 public:
@@ -41,30 +43,21 @@ public:
   ~ImageTensorNormalizeNode();
 
 private:
-  void ImageTensorNormalizeCallback(
-    const nvidia::isaac_ros::nitros::NitrosTensorList::SharedPtr tensor_msg);
+  void ImageTensorNormalizeCallback(const TensorList::ConstSharedPtr tensor_msg);
 
-  // Parameters
   const std::vector<double> image_mean_;
   const std::vector<double> image_stddev_;
   const std::string input_tensor_name_;
   const std::string output_tensor_name_;
-  const int64_t memory_pool_block_size_;
-  const int64_t memory_pool_num_blocks_;
   const rclcpp::QoS input_qos_;
   const rclcpp::QoS output_qos_;
 
-  // Subscribers and publishers
-  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr tensor_list_sub_;
-  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr tensor_list_pub_;
+  rclcpp::Subscription<TensorList>::SharedPtr tensor_list_sub_;
+  rclcpp::Publisher<TensorList>::SharedPtr tensor_list_pub_;
 
   nvcv::Tensor mean_;
   nvcv::Tensor stddev_;
-
-  // Resources
   ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
-  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
-
   cvcuda::Normalize normalize_op_;
 };
 

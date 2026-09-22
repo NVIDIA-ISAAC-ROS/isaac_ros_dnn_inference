@@ -17,15 +17,13 @@
 
 #include "isaac_ros_tensor_proc/image_tensor_normalize_node.hpp"
 
-#include <climits>
 #include <stdexcept>
-#include <string>
+#include <utility>
+#include <vector>
 
+#include "cvcuda_conversions/cvcuda_conversions.hpp"
 #include "isaac_ros_common/cuda_stream.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
-#include "isaac_ros_cvcuda_utils/cvcuda_handle.hpp"
-#include "isaac_ros_cvcuda_utils/cvcuda_utilities.hpp"
+#include "isaac_ros_common/qos.hpp"
 #include "nvcv/TensorDataAccess.hpp"
 
 namespace nvidia
@@ -35,21 +33,19 @@ namespace isaac_ros
 namespace dnn_inference
 {
 
+namespace TensorConv = cvcuda_conversions;
+
 ImageTensorNormalizeNode::ImageTensorNormalizeNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("image_tensor_normalize_node", options),
   image_mean_{declare_parameter<std::vector<double>>("mean", {0.5, 0.5, 0.5})},
   image_stddev_{declare_parameter<std::vector<double>>("stddev", {0.5, 0.5, 0.5})},
   input_tensor_name_{declare_parameter<std::string>("input_tensor_name", "tensor")},
   output_tensor_name_{declare_parameter<std::string>("output_tensor_name", "tensor")},
-  memory_pool_block_size_{declare_parameter<int64_t>("memory_pool_block_size", 1920 * 1200 * 4)},
-  memory_pool_num_blocks_{declare_parameter<int64_t>("memory_pool_num_blocks", 40)},
   input_qos_{::isaac_ros::common::AddQosParameter(*this, "DEFAULT", "input_qos")},
   output_qos_{::isaac_ros::common::AddQosParameter(*this, "DEFAULT", "output_qos")}
 {
-  // Create CUDA resources
   cuda_stream_ = ::nvidia::isaac_ros::common::createCudaStream("ImageTensorNormalizeNode");
 
-  // Create mean and stddev tensors
   std::vector<float> mean_float(image_mean_.begin(), image_mean_.end());
   std::vector<float> stddev_float(image_stddev_.begin(), image_stddev_.end());
   nvcv::TensorShape::ShapeType shape{nvcv::TensorShape::ShapeType{1, 1, 1,
@@ -57,12 +53,12 @@ ImageTensorNormalizeNode::ImageTensorNormalizeNode(const rclcpp::NodeOptions & o
   nvcv::TensorShape tensor_shape{shape, nvcv::TENSOR_NHWC};
   mean_ = nvcv::Tensor(tensor_shape, nvcv::TYPE_F32);
   stddev_ = nvcv::Tensor(tensor_shape, nvcv::TYPE_F32);
+
   auto mean_data = mean_.exportData<nvcv::TensorDataStridedCuda>();
   auto mean_access = nvcv::TensorDataAccessStridedImagePlanar::Create(*mean_data);
   auto stddev_data = stddev_.exportData<nvcv::TensorDataStridedCuda>();
   auto stddev_access = nvcv::TensorDataAccessStridedImagePlanar::Create(*stddev_data);
 
-  // Copy mean and stddev to GPU
   cudaError_t err = cudaMemcpy2DAsync(
     mean_access->sampleData(0), mean_access->rowStride(), mean_float.data(),
     mean_float.size() * sizeof(float), mean_float.size() * sizeof(float), 1,
@@ -73,105 +69,84 @@ ImageTensorNormalizeNode::ImageTensorNormalizeNode(const rclcpp::NodeOptions & o
     stddev_float.size() * sizeof(float), stddev_float.size() * sizeof(float), 1,
     cudaMemcpyHostToDevice, *cuda_stream_);
   CHECK_CUDA_ERROR(err, "[ImageTensorNormalizeNode] cudaMemcpy2DAsync for stddev failed");
-
   CHECK_CUDA_ERROR(cudaStreamSynchronize(*cuda_stream_),
     "[ImageTensorNormalizeNode] cudaStreamSynchronize failed");
 
-  // Create subscriber and publisher
   rclcpp::SubscriptionOptions sub_options;
   sub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
   rclcpp::PublisherOptions pub_options;
   pub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
 
-  tensor_list_sub_ = create_subscription<nvidia::isaac_ros::nitros::NitrosTensorList>(
+  tensor_list_sub_ = create_subscription<TensorList>(
     "tensor", input_qos_,
     std::bind(&ImageTensorNormalizeNode::ImageTensorNormalizeCallback, this,
       std::placeholders::_1), sub_options);
-  tensor_list_pub_ = create_publisher<nvidia::isaac_ros::nitros::NitrosTensorList>(
-    "normalized_tensor",
-    output_qos_, pub_options);
+  tensor_list_pub_ = create_publisher<TensorList>(
+    "normalized_tensor", output_qos_, pub_options);
   RCLCPP_INFO(get_logger(), "[ImageTensorNormalizeNode] Setup complete");
 }
 
 ImageTensorNormalizeNode::~ImageTensorNormalizeNode() {}
 
 void ImageTensorNormalizeNode::ImageTensorNormalizeCallback(
-  const nvidia::isaac_ros::nitros::NitrosTensorList::SharedPtr tensor_msg)
+  const TensorList::ConstSharedPtr tensor_msg)
 {
-  // Get input tensor
-  std::shared_ptr<nvidia::isaac_ros::nitros::NitrosTensor> input_tensor =
-    tensor_msg->get_tensor_by_name(input_tensor_name_);
-  if (input_tensor == nullptr) {
+  const TensorConv::Tensor * input_tensor =
+    TensorConv::find_tensor_by_name(*tensor_msg, input_tensor_name_);
+  if (!input_tensor) {
     RCLCPP_ERROR(get_logger(), "[ImageTensorNormalizeNode] Input tensor %s not found",
       input_tensor_name_.c_str());
     return;
   }
-  nvcv::DataType dtype = cvcuda_utils::ToNVCVDataType(input_tensor->data_type());
-  std::vector<int32_t> dims;
-  nvcv::TensorShape::ShapeType input_shape;
-  nvcv::TensorLayout input_layout;
-  for (size_t i = 0; i < input_tensor->shape().rank(); i++) {
-    dims.push_back(input_tensor->shape().dims()[i]);
-  }
-  if (input_tensor->shape().rank() == 4) {
-    input_shape = {dims[0], dims[1], dims[2], dims[3]};
-    input_layout = nvcv::TENSOR_NCHW;
-  } else if (input_tensor->shape().rank() == 3) {
-    input_shape = {dims[0], dims[1], dims[2]};
-    input_layout = nvcv::TENSOR_HWC;
+
+  // The CV-CUDA normalize op runs on input and output tensors wrapped with the
+  // same layout so the per-channel mean/stddev broadcast lands on the channel
+  // axis. For a 3D HWC input we run the op as HWC and then prepend a batch
+  // dimension to the published message (NHWC) for downstream consumers.
+  nvcv::TensorLayout layout;
+  bool prepend_batch_dim = false;
+  if (input_tensor->shape.size() == 4) {
+    layout = nvcv::TENSOR_NCHW;
+  } else if (input_tensor->shape.size() == 3) {
+    layout = nvcv::TENSOR_HWC;
+    prepend_batch_dim = true;
   } else {
-    RCLCPP_ERROR(get_logger(),
-      "[ImageTensorNormalizeNode] Unsupported input tensor shape rank: %d",
-      input_tensor->shape().rank());
+    RCLCPP_ERROR(
+      get_logger(),
+      "[ImageTensorNormalizeNode] Unsupported input tensor shape rank: %zu",
+      input_tensor->shape.size());
     throw std::invalid_argument(
-      "[ImageTensorNormalizeNode] Unsupported input tensor shape rank: " +
-      std::to_string(input_tensor->shape().rank()));
+            "[ImageTensorNormalizeNode] Unsupported input tensor shape rank: " +
+            std::to_string(input_tensor->shape.size()));
   }
 
-  // Wrap input tensor
-  auto input_handle = cvcuda_utils::WrapCVCUDATensor(
-    *input_tensor, input_tensor->get_read_handle(*cuda_stream_), input_shape, dtype,
-    input_layout);
+  const std::vector<int64_t> output_shape(
+    input_tensor->shape.begin(), input_tensor->shape.end());
+  constexpr uint8_t kFloatCode = static_cast<uint8_t>(TensorConv::DLDataTypeCode::kFloat);
 
-  // Create output tensor
-  nvidia::isaac_ros::nitros::NitrosTensor output_tensor;
-  nvidia::isaac_ros::nitros::NitrosTensorShape output_tensor_shape;
-  if (input_tensor->shape().rank() == 4) {
-    output_tensor_shape = nvidia::isaac_ros::nitros::NitrosTensorShape{
-      dims[0], dims[1], dims[2], dims[3]};
-  } else {
-    // Convert HWC to NHWC by adding batch dimension
-    output_tensor_shape = nvidia::isaac_ros::nitros::NitrosTensorShape{
-      1, dims[0], dims[1], dims[2]};
+  TensorConv::Tensor output_tensor;
+  {
+    auto input_handle = TensorConv::from_input_tensor(
+      *input_tensor, *cuda_stream_, layout);
+    output_tensor = TensorConv::allocate_tensor(
+      output_shape, kFloatCode, 32, input_tensor->dtype_lanes);
+    auto output_handle = TensorConv::from_output_tensor(
+      output_tensor, *cuda_stream_, layout);
+    normalize_op_(
+      *cuda_stream_, input_handle, mean_, stddev_, output_handle,
+      1.0f, 0.0f, 0.0f, CVCUDA_NORMALIZE_SCALE_IS_STDDEV);
   }
 
-  const size_t required_size = static_cast<size_t>(dims[0]) * dims[1] * dims[2] * sizeof(float);
-  if (!pool_.initialized()) {
-    const int64_t actual_block_size = std::max(
-      memory_pool_block_size_, static_cast<int64_t>(required_size));
-    CHECK_CUDA_ERROR(pool_.create(
-      static_cast<size_t>(actual_block_size),
-      static_cast<size_t>(memory_pool_num_blocks_),
-      nvidia::isaac_ros::nitros::CUDAMemoryPool::MemoryType::Device),
-      "[ImageTensorNormalizeNode] Failed to create CUDA memory pool");
+  // Present the HWC result as NHWC (add batch dim) without touching the buffer.
+  if (prepend_batch_dim) {
+    output_tensor.shape.insert(output_tensor.shape.begin(), 1);
   }
-  auto output_write_handle = output_tensor.from_pool(
-    output_tensor_name_, pool_, output_tensor_shape,
-    nvidia::isaac_ros::nitros::NitrosDataType::kFloat32, *cuda_stream_);
-  auto output_handle = cvcuda_utils::WrapCVCUDATensor(
-    output_tensor, std::move(output_write_handle), input_shape, nvcv::TYPE_F32, input_layout);
 
-  // Normalize input tensor
-  normalize_op_(
-    *cuda_stream_, input_handle.get_tensor(), mean_, stddev_, output_handle.get_tensor(),
-    1.0f, 0.0f, 0.0f, CVCUDA_NORMALIZE_SCALE_IS_STDDEV);
-
-  nvidia::isaac_ros::nitros::NitrosTensorList tensor_list =
-    nvidia::isaac_ros::nitros::NitrosTensorListBuilder()
-    .WithHeader(tensor_msg->get_header())
-    .AddTensor(output_tensor)
-    .Build();
-  tensor_list_pub_->publish(tensor_list);
+  TensorList output_list;
+  output_list.header = tensor_msg->header;
+  output_list.names = {output_tensor_name_};
+  output_list.tensors = {std::move(output_tensor)};
+  tensor_list_pub_->publish(std::move(output_list));
 }
 
 }  // namespace dnn_inference

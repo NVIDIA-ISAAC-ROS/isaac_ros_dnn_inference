@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,24 +28,7 @@ ament_auto_find_build_dependencies()
 # Dependencies
 find_package(CUDAToolkit REQUIRED)
 find_package(isaac_ros_common REQUIRED)
-find_package(isaac_ros_nitros REQUIRED)
-find_package(isaac_ros_nitros_tensor_list_type REQUIRED)
-find_package(isaac_ros_tensor_list_interfaces REQUIRED)
 find_package(TENSORRT MODULE REQUIRED)
-find_library(ISAAC_ROS_COMMON_LIBRARY isaac_ros_common REQUIRED)
-find_library(ISAAC_ROS_NITROS_LIBRARY isaac_ros_nitros REQUIRED)
-find_library(ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY
-  isaac_ros_nitros_tensor_list_type REQUIRED)
-find_library(ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY
-  isaac_ros_tensor_list_interfaces__rosidl_typesupport_cpp REQUIRED)
-
-set(TENSOR_RT_NITROS_LIBRARIES
-  CUDA::cudart
-  ${ISAAC_ROS_COMMON_LIBRARY}
-  ${ISAAC_ROS_NITROS_LIBRARY}
-  ${ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY}
-  ${ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY}
-)
 
 # TensorRTNode
 ament_auto_add_library(tensor_rt_node SHARED src/tensor_rt_node.cpp)
@@ -53,7 +36,8 @@ target_link_libraries(tensor_rt_node
   TENSORRT::nvinfer
   TENSORRT::nvinfer_plugin
   TENSORRT::nvonnxparser
-  ${TENSOR_RT_NITROS_LIBRARIES}
+  CUDA::cudart
+  CUDA::cuda_driver
 )
 rclcpp_components_register_nodes(tensor_rt_node "nvidia::isaac_ros::dnn_inference::TensorRTNode")
 set(node_plugins "${node_plugins}nvidia::isaac_ros::dnn_inference::TensorRTNode;$<TARGET_FILE:tensor_rt_node>\n")
@@ -79,10 +63,10 @@ if(BUILD_TESTING)
 
   # Add gtests
   ament_add_gtest(tensor_rt_node_test test/tensor_rt_node_test.cpp)
-  target_link_libraries(tensor_rt_node_test tensor_rt_node)
+  # tensor_rt_node carries rclcpp's include dirs and link libs transitively, so
+  # linking it is sufficient. This ROS distro drops ament_target_dependencies.
+  target_link_libraries(tensor_rt_node_test tensor_rt_node ${rclcpp_TARGETS})
   target_include_directories(tensor_rt_node_test PUBLIC include/)
-  ament_target_dependencies(tensor_rt_node_test rclcpp)
-  ament_target_dependencies(tensor_rt_node_test isaac_ros_managed_nitros)
 
   # The FindPythonInterp and FindPythonLibs modules are removed
   if(POLICY CMP0148)

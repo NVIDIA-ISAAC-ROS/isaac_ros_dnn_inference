@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import errno
 import os
 import time
 
-from isaac_ros_tensor_list_interfaces.msg import Tensor, TensorList, TensorShape
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
 import launch
 from launch_ros.actions import ComposableNodeContainer
@@ -28,6 +28,7 @@ import launch_testing
 
 import pytest
 import rclpy
+from tensor_msgs.msg import ExperimentalTensor
 
 
 @pytest.mark.rostest
@@ -90,12 +91,13 @@ class IsaacROSTensorRTNodeTest(IsaacROSBaseTest):
     # Will depend on time taken for TensorRT engine generation
     PYTHON_SUBSCRIBER_WAIT_SEC = 30.0
 
-    # Mobilenetv2-1.0 output tensor properties to verify
+    # Mobilenetv2-1.0 output tensor properties to verify.
+    # DLPack dtype for float32: code=2 (Float), bits=32, lanes=1.
     NAME = 'output'
-    DATA_TYPE = 9
+    DTYPE_CODE = 2
+    DTYPE_BITS = 32
+    DTYPE_LANES = 1
     DIMENSIONS = [1, 1000]
-    RANK = 2
-    STRIDES = [4000, 4]
     DATA_LENGTH = 4000
     MODEL_GENERATION_TIMEOUT_SEC = 400
     GXF_WAIT_SEC = 10
@@ -149,18 +151,16 @@ class IsaacROSTensorRTNodeTest(IsaacROSBaseTest):
         try:
             # Create tensor compatible with mobilenetv2-1.0
             pub_tensor_list = TensorList()
-            pub_tensor = Tensor()
-            pub_shape = TensorShape()
+            pub_tensor = ExperimentalTensor()
 
-            pub_shape.rank = 4
-            pub_shape.dims = [1, 3, 224, 224]
-            pub_tensor.shape = pub_shape
-
-            pub_tensor.name = 'input'
-            pub_tensor.data_type = self.DATA_TYPE
+            pub_tensor.dtype_code = self.DTYPE_CODE
+            pub_tensor.dtype_bits = self.DTYPE_BITS
+            pub_tensor.dtype_lanes = self.DTYPE_LANES
+            pub_tensor.shape = [1, 3, 224, 224]
             pub_tensor.strides = []
+            pub_tensor.byte_offset = 0
             pub_tensor.data = [0] * 150528 * 4
-
+            pub_tensor_list.names = ['input']
             pub_tensor_list.tensors = [pub_tensor]
 
             self.node._logger.info(
@@ -179,55 +179,45 @@ class IsaacROSTensorRTNodeTest(IsaacROSBaseTest):
 
             for tensor_list, _ in received_messages[subscriber_topic_namespace]:
                 tensor = tensor_list.tensors[0]
+                tensor_name = tensor_list.names[0]
 
                 # Verify all tensor properties match that of default mobilenetv2-1.0
+                self.assertEqual(tensor_name, self.NAME)
                 self.assertEqual(
-                    tensor.name, self.NAME,
-                    f'Unexpected tensor name, expected: {self.NAME} received: {tensor.name}'
+                    tensor.dtype_code, self.DTYPE_CODE,
+                    f'Unexpected tensor dtype_code, expected: {self.DTYPE_CODE} '
+                    f'received: {tensor.dtype_code}'
                 )
                 self.assertEqual(
-                    tensor.data_type, self.DATA_TYPE,
-                    f'Unexpected tensor data type, expected: {self.DATA_TYPE} '
-                    f'received: {tensor.data_type}'
-                )
-                self.assertEqual(
-                    tensor.strides.tolist(), self.STRIDES,
-                    f'Unexpected tensor strides, expected: {self.STRIDES} '
-                    f'received: {tensor.strides}'
+                    tensor.dtype_bits, self.DTYPE_BITS,
+                    f'Unexpected tensor dtype_bits, expected: {self.DTYPE_BITS} '
+                    f'received: {tensor.dtype_bits}'
                 )
                 self.assertEqual(
                     len(tensor.data.tolist()), self.DATA_LENGTH,
                     f'Unexpected tensor length, expected: {self.DATA_LENGTH} '
                     f'received: {len(tensor.data)}'
                 )
-
-                shape = tensor.shape
-
                 self.assertEqual(
-                    shape.rank, self.RANK,
-                    f'Unexpected tensor rank, expected: {self.RANK} received: {shape.rank}'
-                )
-                self.assertEqual(
-                    shape.dims.tolist(), self.DIMENSIONS,
+                    tensor.shape.tolist(), self.DIMENSIONS,
                     f'Unexpected tensor dimensions, expected: {self.DIMENSIONS} '
-                    f'received: {shape.dims}'
+                    f'received: {tensor.shape}'
                 )
 
             # Log properties of last received tensor
             tensor_list, _ = received_messages[subscriber_topic_namespace][-1]
             tensor = tensor_list.tensors[0]
-            shape = tensor.shape
+            tensor_name = tensor_list.names[0]
             length = len(tensor.data.tolist())
-            strides = tensor.strides.tolist()
-            dimensions = shape.dims.tolist()
+            dimensions = tensor.shape.tolist()
 
             self.node._logger.info(
                 f'Received Tensor Properties:\n'
-                f'Name: {tensor.name}\n'
-                f'Data Type: {tensor.data_type}\n'
-                f'Strides: {strides}\n'
+                f'Name: {tensor_name}\n'
+                f'DType Code: {tensor.dtype_code}\n'
+                f'DType Bits: {tensor.dtype_bits}\n'
+                f'DType Lanes: {tensor.dtype_lanes}\n'
                 f'Byte Length: {length}\n'
-                f'Rank: {shape.rank}\n'
                 f'Dimensions: {dimensions}'
             )
 

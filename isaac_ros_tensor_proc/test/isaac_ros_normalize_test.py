@@ -20,7 +20,7 @@ import pathlib
 import time
 
 from cv_bridge import CvBridge
-from isaac_ros_tensor_list_interfaces.msg import TensorList
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
@@ -117,18 +117,21 @@ class IsaacROSNormalizeNodeTest(IsaacROSBaseTest):
                     done = True
                     break
             self.assertTrue(done, 'Appropriate output not received')
-            tensor = received_messages['tensors'].tensors[0]
-            self.assertEqual(tensor.name, 'normalize_test')
+            tensor_list = received_messages['tensors']
+            tensor = tensor_list.tensors[0]
+            self.assertEqual(tensor_list.names[0], 'normalize_test')
 
             # The tensor has the format HWC and is a float array, so
-            # use numpy to interpret it as such, and then reshape it
+            # use numpy to interpret it as such, and then reshape it.
+            # ROS int64[] shape deserializes as array('q', ...); compare via list().
             DIMENSION_CHANNEL = 3
+            EXPECTED_SHAPE = [DIMENSION_HEIGHT, DIMENSION_WIDTH, DIMENSION_CHANNEL]
+            self.assertEqual(list(tensor.shape), EXPECTED_SHAPE,
+                             'Output tensor shape mismatch')
+
             normalized_tensor = np.frombuffer(tensor.data, np.float32)
-            normalized_tensor = normalized_tensor.reshape(DIMENSION_HEIGHT,
-                                                          DIMENSION_WIDTH,
-                                                          DIMENSION_CHANNEL)
-            self.assertEqual(normalized_tensor.shape, (DIMENSION_HEIGHT, DIMENSION_WIDTH,
-                                                       DIMENSION_CHANNEL),
+            normalized_tensor = normalized_tensor.reshape(*EXPECTED_SHAPE)
+            self.assertEqual(normalized_tensor.shape, tuple(EXPECTED_SHAPE),
                              'Normalized tensor shape mismatch')
             for c in range(DIMENSION_CHANNEL):
                 self.assertTrue(

@@ -21,16 +21,12 @@
 #include <memory>
 #include <string>
 
+#include "isaac_ros_common/cuda_stream.hpp"
+#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
+#include "message_filters/subscriber.hpp"
+#include "message_filters/synchronizer.hpp"
+#include "message_filters/sync_policies/exact_time.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/header.hpp"
-#include "message_filters/subscriber.h"
-#include "message_filters/synchronizer.h"
-#include "message_filters/sync_policies/exact_time.h"
-
-#include "isaac_ros_common/qos.hpp"
-#include "isaac_ros_nitros/types/nitros_type_message_filter_traits.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-
 
 namespace nvidia
 {
@@ -38,52 +34,41 @@ namespace isaac_ros
 {
 namespace dnn_inference
 {
+
+using TensorList = isaac_ros_tensor_msgs::msg::TensorList;
+
 class TensorPairSyncNode : public rclcpp::Node
 {
 public:
   explicit TensorPairSyncNode(const rclcpp::NodeOptions & options);
-
   ~TensorPairSyncNode();
 
 private:
-  // Callback for synchronized tensor pairs
   void SynchronizedCallback(
-    const nvidia::isaac_ros::nitros::NitrosTensorList::ConstSharedPtr & msg1,
-    const nvidia::isaac_ros::nitros::NitrosTensorList::ConstSharedPtr & msg2);
+    const TensorList::ConstSharedPtr & msg1,
+    const TensorList::ConstSharedPtr & msg2);
 
-  // Callback for unsynchronized messages
   void UnsynchronizedCallback(
-    const nvidia::isaac_ros::nitros::NitrosTensorList::ConstSharedPtr & msg1,
-    const nvidia::isaac_ros::nitros::NitrosTensorList::ConstSharedPtr & msg2);
+    const TensorList::ConstSharedPtr & msg1,
+    const TensorList::ConstSharedPtr & msg2);
 
-  // Parameters
-  int64_t memory_pool_block_size_;
-  int64_t memory_pool_num_blocks_;
   int64_t input_queue_size_;
   int64_t output_queue_size_;
-  // Tensor names for input and output
   std::string input_tensor1_name_{};
   std::string input_tensor2_name_{};
   std::string output_tensor1_name_{};
   std::string output_tensor2_name_{};
 
-  ::message_filters::Subscriber<
-    nvidia::isaac_ros::nitros::NitrosTensorList> tensor1_nitros_sub_;
-  ::message_filters::Subscriber<
-    nvidia::isaac_ros::nitros::NitrosTensorList> tensor2_nitros_sub_;
+  ::message_filters::Subscriber<TensorList> tensor1_sub_;
+  ::message_filters::Subscriber<TensorList> tensor2_sub_;
 
-  // Message filter synchronizer
   using ExactPolicy = ::message_filters::sync_policies::ExactTime<
-    nvidia::isaac_ros::nitros::NitrosTensorList,
-    nvidia::isaac_ros::nitros::NitrosTensorList>;
+    TensorList,
+    TensorList>;
   ::message_filters::Synchronizer<ExactPolicy> sync_;
 
-  // Publisher for output NitrosTensorList messages
-  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr nitros_pub_;
-
-  // CUDA stream for GPU operations
+  rclcpp::Publisher<TensorList>::SharedPtr tensor_pub_;
   ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
-  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
 };
 
 }  // namespace dnn_inference

@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,25 +24,6 @@ endif()
 
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
-find_package(CUDAToolkit REQUIRED)
-find_package(isaac_ros_common REQUIRED)
-find_package(isaac_ros_nitros REQUIRED)
-find_package(isaac_ros_nitros_tensor_list_type REQUIRED)
-find_package(isaac_ros_tensor_list_interfaces REQUIRED)
-find_library(ISAAC_ROS_COMMON_LIBRARY isaac_ros_common REQUIRED)
-find_library(ISAAC_ROS_NITROS_LIBRARY isaac_ros_nitros REQUIRED)
-find_library(ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY
-  isaac_ros_nitros_tensor_list_type REQUIRED)
-find_library(ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY
-  isaac_ros_tensor_list_interfaces__rosidl_typesupport_cpp REQUIRED)
-
-set(TRITON_NITROS_LIBRARIES
-  CUDA::cudart
-  ${ISAAC_ROS_COMMON_LIBRARY}
-  ${ISAAC_ROS_NITROS_LIBRARY}
-  ${ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY}
-  ${ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY}
-)
 
 # Triton Server integration - always enabled
 include(FetchContent)
@@ -50,14 +31,15 @@ include(FetchContent)
 # Only prebuilt tarball is supported. Source builds are not allowed.
 if(NOT TRITON_SERVER_TARBALL_URL)
   if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    set(_TRITON_BASE_URL "https://github.com/triton-inference-server/server/releases/download")
-    set(TRITON_SERVER_TARBALL_URL "${_TRITON_BASE_URL}/v2.60.0/tritonserver2.60.0-agx.tar")
+    set(_TRITON_BASE_URL "https://artifactory.pdx.nvidia.com/artifactory")
+    set(_TRITON_PATH "sw-isaac-ros-generic-local/triton/tritonserver2.69.0-sbsa.tar.gz")
+    set(TRITON_SERVER_TARBALL_URL "${_TRITON_BASE_URL}/${_TRITON_PATH}")
     message(
-      STATUS "Using default Triton AGX tarball for aarch64: ${TRITON_SERVER_TARBALL_URL}"
+      STATUS "Using default Triton tarball for aarch64: ${TRITON_SERVER_TARBALL_URL}"
     )
   elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
     set(_TRITON_BASE_URL "https://artifactory.pdx.nvidia.com/artifactory")
-    set(_TRITON_PATH "sw-isaac-ros-generic-local/triton/tritonserver.2.60.tar.gz")
+    set(_TRITON_PATH "sw-isaac-ros-generic-local/triton/tritonserver2.69.0.tar.gz")
     set(TRITON_SERVER_TARBALL_URL "${_TRITON_BASE_URL}/${_TRITON_PATH}")
     message(STATUS "Using default Triton x86_64 tarball: ${TRITON_SERVER_TARBALL_URL}")
   else()
@@ -110,13 +92,7 @@ endif()
 
 # TritonNode
 ament_auto_add_library(triton_node SHARED src/triton_node.cpp)
-ament_target_dependencies(triton_node
-  rclcpp
-  rclcpp_components
-  isaac_ros_common
-  isaac_ros_managed_nitros
-  isaac_ros_nitros_tensor_list_type
-)
+find_package(CUDAToolkit REQUIRED)
 
 # Add Triton dependencies if found
 if(_HDR_COUNT GREATER 0)
@@ -130,10 +106,11 @@ if(_LIB_COUNT GREATER 0)
     INTERFACE_INCLUDE_DIRECTORIES "${_TRITON_INC_DIR}"
   )
   target_link_libraries(triton_node
-    ${TRITON_NITROS_LIBRARIES}
     tritonserver::tritonserver
     dl
     pthread
+    CUDA::cudart
+    CUDA::cuda_driver
   )
 endif()
 rclcpp_components_register_nodes(triton_node "nvidia::isaac_ros::dnn_inference::TritonNode")
@@ -141,10 +118,16 @@ set(
   node_plugins
   "${node_plugins}nvidia::isaac_ros::dnn_inference::TritonNode;$<TARGET_FILE:triton_node>\n"
 )
+# libtritonserver.so is fetched into the build tree (_deps/tritonserver-src/lib).
+# INSTALL_RPATH_USE_LINK_PATH intentionally drops build-tree dirs from the install
+# RPATH, so add the Triton lib dir explicitly. Without this, triton_node.so cannot
+# resolve its direct dependency libtritonserver.so, and because DT_RUNPATH is not
+# transitive, consumers (e.g. triton_node_test) fail to load it either.
 set_target_properties(triton_node PROPERTIES
   BUILD_WITH_INSTALL_RPATH TRUE
   BUILD_RPATH_USE_ORIGIN TRUE
   INSTALL_RPATH_USE_LINK_PATH TRUE
+  INSTALL_RPATH "${_TRITON_LIB_DIR}"
 )
 
 if(BUILD_TESTING)
@@ -164,14 +147,8 @@ if(BUILD_TESTING)
 
   # Gtest for triton node
   ament_add_gtest(triton_node_test test/triton_node_test.cpp)
-  target_link_libraries(triton_node_test
-    triton_node
-    ${TRITON_NITROS_LIBRARIES}
-  )
+  target_link_libraries(triton_node_test triton_node CUDA::cudart ${rclcpp_TARGETS})
   target_include_directories(triton_node_test PUBLIC include/ ${_TRITON_INC_DIR})
-  ament_target_dependencies(triton_node_test rclcpp)
-  ament_target_dependencies(triton_node_test isaac_ros_nitros)
-  target_link_libraries(triton_node_test CUDA::cudart)
 
   # The FindPythonInterp and FindPythonLibs modules are removed
   if(POLICY CMP0148)
@@ -180,6 +157,7 @@ if(BUILD_TESTING)
 
   find_package(launch_testing_ament_cmake REQUIRED)
   add_launch_test(test/isaac_ros_triton_test_onnx.py TIMEOUT "300")
+  add_launch_test(test/isaac_ros_triton_test_pytorch.py TIMEOUT "300")
 endif()
 
 

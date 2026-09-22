@@ -24,36 +24,18 @@ endif()
 
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
-
 find_package(CUDAToolkit REQUIRED)
-find_package(isaac_ros_common REQUIRED)
-find_package(isaac_ros_cvcuda_utils REQUIRED)
-find_package(isaac_ros_nitros REQUIRED)
-find_package(isaac_ros_nitros_image_type REQUIRED)
-find_package(isaac_ros_nitros_tensor_list_type REQUIRED)
-find_package(isaac_ros_tensor_list_interfaces REQUIRED)
-find_library(ISAAC_ROS_COMMON_LIBRARY isaac_ros_common REQUIRED)
-find_library(ISAAC_ROS_CVCUDA_UTILS_LIBRARY isaac_ros_cvcuda_utils REQUIRED)
-find_library(ISAAC_ROS_NITROS_LIBRARY isaac_ros_nitros REQUIRED)
-find_library(ISAAC_ROS_NITROS_IMAGE_TYPE_LIBRARY isaac_ros_nitros_image_type REQUIRED)
-find_library(ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY
-  isaac_ros_nitros_tensor_list_type REQUIRED)
-find_library(ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY
-  isaac_ros_tensor_list_interfaces__rosidl_typesupport_cpp REQUIRED)
 
-set(TENSOR_PROC_NITROS_LIBRARIES
+set(_tensor_proc_node_deps
+  cvcuda
+  nvcv_types
   CUDA::cudart
-  ${ISAAC_ROS_COMMON_LIBRARY}
-  ${ISAAC_ROS_CVCUDA_UTILS_LIBRARY}
-  ${ISAAC_ROS_NITROS_LIBRARY}
-  ${ISAAC_ROS_NITROS_IMAGE_TYPE_LIBRARY}
-  ${ISAAC_ROS_NITROS_TENSOR_LIST_TYPE_LIBRARY}
-  ${ISAAC_ROS_TENSOR_LIST_INTERFACES_TYPESUPPORT_CPP_LIBRARY}
+  CUDA::cuda_driver
 )
 
 # Interleaved to planar
 ament_auto_add_library(interleaved_to_planar_node SHARED src/interleaved_to_planar_node.cpp)
-target_link_libraries(interleaved_to_planar_node cvcuda ${TENSOR_PROC_NITROS_LIBRARIES})
+target_link_libraries(interleaved_to_planar_node ${_tensor_proc_node_deps})
 rclcpp_components_register_nodes(interleaved_to_planar_node
   "nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode")
 set(node_plugins
@@ -63,11 +45,9 @@ set_target_properties(interleaved_to_planar_node PROPERTIES
   BUILD_RPATH_USE_ORIGIN TRUE
   INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-
 # Reshape
 ament_auto_add_library(reshape_node SHARED src/reshape_node.cpp)
-ament_target_dependencies(reshape_node rclcpp rclcpp_components isaac_ros_cvcuda_utils)
-target_link_libraries(reshape_node cvcuda ${TENSOR_PROC_NITROS_LIBRARIES})
+target_link_libraries(reshape_node ${_tensor_proc_node_deps})
 rclcpp_components_register_nodes(reshape_node
   "nvidia::isaac_ros::dnn_inference::ReshapeNode")
 set(node_plugins
@@ -79,11 +59,11 @@ set_target_properties(reshape_node PROPERTIES
 
 # Image to Tensor
 ament_auto_add_library(image_to_tensor_node SHARED src/image_to_tensor_node.cpp)
+target_link_libraries(image_to_tensor_node ${_tensor_proc_node_deps})
 rclcpp_components_register_nodes(image_to_tensor_node
   "nvidia::isaac_ros::dnn_inference::ImageToTensorNode")
 set(node_plugins
   "${node_plugins}nvidia::isaac_ros::dnn_inference::ImageToTensorNode;$<TARGET_FILE:image_to_tensor_node>\n")
-target_link_libraries(image_to_tensor_node cvcuda nvcv_types ${TENSOR_PROC_NITROS_LIBRARIES})
 set_target_properties(image_to_tensor_node PROPERTIES
   BUILD_WITH_INSTALL_RPATH TRUE
   BUILD_RPATH_USE_ORIGIN TRUE
@@ -91,72 +71,56 @@ set_target_properties(image_to_tensor_node PROPERTIES
 
 # Image tensor normalize node
 ament_auto_add_library(image_tensor_normalize_node SHARED src/image_tensor_normalize_node.cpp)
-  rclcpp_components_register_nodes(image_tensor_normalize_node
-    "nvidia::isaac_ros::dnn_inference::ImageTensorNormalizeNode")
-  set(node_plugins
-    "${node_plugins}nvidia::isaac_ros::dnn_inference::ImageTensorNormalizeNode;$<TARGET_FILE:image_tensor_normalize_node>\n")
-  target_link_libraries(
-    image_tensor_normalize_node cvcuda nvcv_types ${TENSOR_PROC_NITROS_LIBRARIES})
-  set_target_properties(image_tensor_normalize_node PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    BUILD_RPATH_USE_ORIGIN TRUE
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
+target_link_libraries(image_tensor_normalize_node ${_tensor_proc_node_deps})
+rclcpp_components_register_nodes(image_tensor_normalize_node
+  "nvidia::isaac_ros::dnn_inference::ImageTensorNormalizeNode")
+set(node_plugins
+  "${node_plugins}nvidia::isaac_ros::dnn_inference::ImageTensorNormalizeNode;$<TARGET_FILE:image_tensor_normalize_node>\n")
+set_target_properties(image_tensor_normalize_node PROPERTIES
+  BUILD_WITH_INSTALL_RPATH TRUE
+  BUILD_RPATH_USE_ORIGIN TRUE
+  INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # Normalize
 ament_auto_add_library(normalize_node SHARED src/normalize_node.cpp)
-  rclcpp_components_register_nodes(normalize_node
-    "nvidia::isaac_ros::dnn_inference::NormalizeNode")
-  set(node_plugins
-    "${node_plugins}nvidia::isaac_ros::dnn_inference::NormalizeNode;$<TARGET_FILE:normalize_node>\n")
-  target_link_libraries(normalize_node cvcuda nvcv_types ${TENSOR_PROC_NITROS_LIBRARIES})
-  set_target_properties(normalize_node PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    BUILD_RPATH_USE_ORIGIN TRUE
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
+target_link_libraries(normalize_node ${_tensor_proc_node_deps})
+rclcpp_components_register_nodes(normalize_node
+  "nvidia::isaac_ros::dnn_inference::NormalizeNode")
+set(node_plugins
+  "${node_plugins}nvidia::isaac_ros::dnn_inference::NormalizeNode;$<TARGET_FILE:normalize_node>\n")
+set_target_properties(normalize_node PROPERTIES
+  BUILD_WITH_INSTALL_RPATH TRUE
+  BUILD_RPATH_USE_ORIGIN TRUE
+  INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # Tensor Pair Sync
 ament_auto_add_library(tensor_pair_sync_node SHARED src/tensor_pair_sync_node.cpp)
-  rclcpp_components_register_nodes(tensor_pair_sync_node
+target_link_libraries(tensor_pair_sync_node ${_tensor_proc_node_deps})
+rclcpp_components_register_nodes(tensor_pair_sync_node
   "nvidia::isaac_ros::dnn_inference::TensorPairSyncNode")
-  set(node_plugins
+set(node_plugins
   "${node_plugins}nvidia::isaac_ros::dnn_inference::TensorPairSyncNode;$<TARGET_FILE:tensor_pair_sync_node>\n")
-  target_link_libraries(tensor_pair_sync_node ${TENSOR_PROC_NITROS_LIBRARIES})
-  set_target_properties(tensor_pair_sync_node PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    BUILD_RPATH_USE_ORIGIN TRUE
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
+set_target_properties(tensor_pair_sync_node PROPERTIES
+  BUILD_WITH_INSTALL_RPATH TRUE
+  BUILD_RPATH_USE_ORIGIN TRUE
+  INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
-  # Force use of ROS2 vendor googletest to avoid version conflicts
   set(CMAKE_IGNORE_PATH "/usr/src/googletest" ${CMAKE_IGNORE_PATH})
   set(CMAKE_IGNORE_PATH "/usr/include/gtest" ${CMAKE_IGNORE_PATH})
   set(CMAKE_IGNORE_PATH "/usr/include/gmock" ${CMAKE_IGNORE_PATH})
-
-  # Explicitly use ROS2 vendor googletest/gmock
   include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gtest_vendor/include)
   include_directories(BEFORE /opt/ros/$ENV{ROS_DISTRO}/src/gmock_vendor/include)
 
-  # Gtest for interleaved_to_planar_node
   ament_add_gtest(interleaved_to_planar_node_test test/interleaved_to_planar_node_test.cpp)
   target_link_libraries(interleaved_to_planar_node_test interleaved_to_planar_node)
-  target_include_directories(interleaved_to_planar_node_test PUBLIC include/)
-  ament_target_dependencies(interleaved_to_planar_node_test rclcpp)
-  ament_target_dependencies(interleaved_to_planar_node_test isaac_ros_nitros)
-  # Gtest for normalize_node
+
   ament_add_gtest(normalize_node_test test/normalize_node_test.cpp)
   target_link_libraries(normalize_node_test normalize_node)
-  target_include_directories(normalize_node_test PUBLIC include/)
-  ament_target_dependencies(normalize_node_test rclcpp)
-  ament_target_dependencies(normalize_node_test isaac_ros_nitros)
-
-  # The FindPythonInterp and FindPythonLibs modules are removed
-  if(POLICY CMP0148)
-    cmake_policy(SET CMP0148 OLD)
-  endif()
 
   find_package(launch_testing_ament_cmake REQUIRED)
   add_launch_test(test/isaac_ros_interleaved_to_planar_test.py)
@@ -168,8 +132,6 @@ if(BUILD_TESTING)
   add_launch_test(test/isaac_ros_normalize_test.py)
 endif()
 
-
-# Embed versioning information into installed files
 ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
 include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
 generate_version_info(${PROJECT_NAME})

@@ -20,7 +20,7 @@ import pathlib
 import time
 
 from ament_index_python.packages import get_package_share_directory
-from isaac_ros_tensor_list_interfaces.msg import TensorList
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest, JSONConversion
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -49,6 +49,7 @@ def generate_test_description():
             'input_image_height': '1080',
             'network_image_width': '512',
             'network_image_height': '512',
+            'input_encoding': 'bgr8',
             'dnn_image_encoder_namespace': namespace,
             'tensor_output_topic': 'tensors',
             'image_input_topic': 'image',
@@ -115,11 +116,12 @@ class IsaacROSDnnImageEncoderLaunchTest(IsaacROSBaseTest):
                 str(timestamp), str(tensor_list.header.stamp),
                 'Timestamps do not match.')
 
-            self.assertEqual(tensor.shape.rank, 4, 'Expected rank 4 tensor')
-            self.assertEqual(tensor.shape.dims[0], 1, 'Expected batch dim 1')
-            self.assertEqual(tensor.shape.dims[1], 3, 'Expected channel dim 3')
-            self.assertEqual(tensor.shape.dims[2], 512, 'Expected height 512')
-            self.assertEqual(tensor.shape.dims[3], 512, 'Expected width 512')
+            shape = list(tensor.shape)
+            self.assertEqual(len(shape), 4, 'Expected rank 4 tensor')
+            self.assertEqual(shape[0], 1, 'Expected batch dim 1')
+            self.assertEqual(shape[1], 3, 'Expected channel dim 3')
+            self.assertEqual(shape[2], 512, 'Expected height 512')
+            self.assertEqual(shape[3], 512, 'Expected width 512')
 
         finally:
             self.node.destroy_subscription(subs)

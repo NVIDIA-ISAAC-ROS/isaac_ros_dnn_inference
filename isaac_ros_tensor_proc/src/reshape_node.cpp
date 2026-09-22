@@ -19,16 +19,15 @@
 
 #include <cuda_runtime.h>
 
-#include <algorithm>
 #include <memory>
+#include <numeric>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "cvcuda_conversions/cvcuda_conversions.hpp"
 #include "isaac_ros_common/cuda_stream.hpp"
 #include "isaac_ros_common/qos.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_cvcuda_utils/cvcuda_handle.hpp"
 #include "isaac_ros_cvcuda_utils/cvcuda_utilities.hpp"
 
 namespace nvidia
@@ -38,12 +37,12 @@ namespace isaac_ros
 namespace dnn_inference
 {
 
+namespace TensorConv = cvcuda_conversions;
+
 ReshapeNode::ReshapeNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("reshape_node", options),
-  input_tensor_layout_(declare_parameter<std::string>(
-      "input_tensor_layout", "HWC")),
-  output_tensor_layout_(declare_parameter<std::string>(
-      "output_tensor_layout", "NHWC")),
+  input_tensor_layout_(declare_parameter<std::string>("input_tensor_layout", "HWC")),
+  output_tensor_layout_(declare_parameter<std::string>("output_tensor_layout", "NHWC")),
   input_tensor_shape_(declare_parameter<std::vector<int64_t>>(
       "input_tensor_shape",
       std::vector<int64_t>{1920, 1200, 3})),
@@ -52,8 +51,6 @@ ReshapeNode::ReshapeNode(const rclcpp::NodeOptions & options)
       std::vector<int64_t>{1, 1920, 1200, 3})),
   output_tensor_name_(declare_parameter<std::string>("output_tensor_name", "output")),
   batch_(declare_parameter<int64_t>("batch", 1)),
-  memory_pool_block_size_(declare_parameter<int64_t>("memory_pool_block_size", 1920 * 1200 * 4)),
-  memory_pool_num_blocks_(declare_parameter<int64_t>("memory_pool_num_blocks", 40)),
   input_qos_(::isaac_ros::common::AddQosParameter(*this, "DEFAULT", "input_qos")),
   output_qos_(::isaac_ros::common::AddQosParameter(*this, "DEFAULT", "output_qos"))
 {
@@ -61,44 +58,28 @@ ReshapeNode::ReshapeNode(const rclcpp::NodeOptions & options)
     throw std::invalid_argument("[ReshapeNode] The input or output tensor shape is empty!");
   }
 
-  const int64_t input_element_count{std::accumulate(
-      input_tensor_shape_.begin(),
-      input_tensor_shape_.end(),
-      1,
-      std::multiplies<int64_t>())};
-
-  const int64_t output_element_count{std::accumulate(
-      output_tensor_shape_.begin(),
-      output_tensor_shape_.end(),
-      1,
-      std::multiplies<int64_t>())};
+  const int64_t input_element_count = std::accumulate(
+    input_tensor_shape_.begin(), input_tensor_shape_.end(), int64_t{1}, std::multiplies<int64_t>());
+  const int64_t output_element_count = std::accumulate(
+    output_tensor_shape_.begin(), output_tensor_shape_.end(), int64_t{1},
+    std::multiplies<int64_t>());
 
   if (input_element_count != output_element_count) {
     throw std::invalid_argument(
-      "[ReshapeNode] The input and output tensor element counts do not match!");
+            "[ReshapeNode] The input and output tensor element counts do not match!");
   }
 
-  // Initialize memory pool and CUDA stream
   cuda_stream_ = ::nvidia::isaac_ros::common::createCudaStream("ReshapeNode");
-
-  const int64_t min_block_size = output_element_count * static_cast<int64_t>(sizeof(double));
-  const int64_t actual_block_size = std::max(memory_pool_block_size_, min_block_size);
-
-  CHECK_CUDA_ERROR(pool_.create(
-    static_cast<size_t>(actual_block_size),
-    static_cast<size_t>(memory_pool_num_blocks_),
-    nvidia::isaac_ros::nitros::CUDAMemoryPool::MemoryType::Device),
-    "[ReshapeNode] Failed to create CUDA memory pool");
 
   rclcpp::SubscriptionOptions sub_options;
   sub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
   rclcpp::PublisherOptions pub_options;
   pub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
-  tensor_sub_ = create_subscription<NitrosTensorList>(
-    "tensor", input_qos_, std::bind(&ReshapeNode::tensorSubCallback, this,
-    std::placeholders::_1), sub_options);
 
-  tensor_pub_ = create_publisher<NitrosTensorList>(
+  tensor_sub_ = create_subscription<TensorList>(
+    "tensor", input_qos_,
+    std::bind(&ReshapeNode::tensorSubCallback, this, std::placeholders::_1), sub_options);
+  tensor_pub_ = create_publisher<TensorList>(
     "reshaped_tensor", output_qos_, pub_options);
 
   RCLCPP_INFO(get_logger(), "[ReshapeNode] Setup complete");
@@ -106,75 +87,83 @@ ReshapeNode::ReshapeNode(const rclcpp::NodeOptions & options)
 
 ReshapeNode::~ReshapeNode() {}
 
-void ReshapeNode::tensorSubCallback(const NitrosTensorList::SharedPtr msg)
+void ReshapeNode::tensorSubCallback(const TensorList::SharedPtr msg)
 {
-  RCLCPP_DEBUG(get_logger(), "[ReshapeNode] Tensor list received");
-
-  const nvcv::TensorLayout input_tensor_layout =
+  const nvcv::TensorLayout input_layout =
     cvcuda_utils::ToNVCVTensorLayout(input_tensor_layout_);
-  nvcv::TensorShape::ShapeType input_shape;
-  if (input_tensor_layout_ == "HWC" || input_tensor_layout_ == "CHW") {
-    input_shape = {input_tensor_shape_[0], input_tensor_shape_[1], input_tensor_shape_[2]};
-  } else if (input_tensor_layout_ == "NHWC" || input_tensor_layout_ == "NCHW") {
-    input_shape = {input_tensor_shape_[0], input_tensor_shape_[1], input_tensor_shape_[2],
-      input_tensor_shape_[3]};
-  } else {
-    throw std::invalid_argument("[ReshapeNode] Invalid input tensor layout!");
-  }
-  auto output_tensor_list = std::make_unique<nvidia::isaac_ros::nitros::NitrosTensorList>();
-  output_tensor_list->set_timestamp_sec(msg->get_timestamp_sec());
-  output_tensor_list->set_timestamp_nsec(msg->get_timestamp_nsec());
-  output_tensor_list->set_frame_id(msg->get_frame_id());
-
-  std::vector<uint32_t> dims;
-  nvcv::TensorShape::ShapeType output_shape;
-  for (size_t j = 0; j < output_tensor_shape_.size(); j++) {
-    dims.push_back(static_cast<uint32_t>(output_tensor_shape_[j]));
-  }
-  if (output_tensor_layout_ == "HWC" || output_tensor_layout_ == "CHW") {
-    output_shape = {dims[0], dims[1], dims[2]};
-  } else if (output_tensor_layout_ == "NHWC" || output_tensor_layout_ == "NCHW") {
-    output_shape = {dims[0], dims[1], dims[2], dims[3]};
-  }
-
-  nvidia::isaac_ros::nitros::NitrosTensorShape output_tensor_shape =
-    nvidia::isaac_ros::nitros::NitrosTensorShape(dims);
-  const nvcv::TensorLayout output_tensor_layout =
+  const nvcv::TensorLayout output_layout =
     cvcuda_utils::ToNVCVTensorLayout(output_tensor_layout_);
 
-  for (size_t i = 0; i < msg->num_tensors(); i++) {
-    // Input tensor
-    nvidia::isaac_ros::nitros::NitrosTensor input_tensor = msg->get_tensor(i);
-    nvcv::DataType dtype = cvcuda_utils::ToNVCVDataType(input_tensor.data_type());
-    auto input_handle = cvcuda_utils::WrapCVCUDATensor(
-      input_tensor, msg->get_read_handle(*cuda_stream_, i), input_shape, dtype,
-      input_tensor_layout);
+  // Match the pre-migration node: interpret buffers using the configured
+  // shape/layout parameters, not the message's declared shape. Downstream
+  // graphs (e.g. dnn_image_encoder) rely on this to add a batch dim via memcpy
+  // even when upstream already published a different rank.
+  const size_t input_rank = input_tensor_shape_.size();
+  const size_t output_rank = output_tensor_shape_.size();
 
-    // Output tensor
-    nvidia::isaac_ros::nitros::NitrosTensor tensor;
-    auto output_write_handle = tensor.from_pool(
-      msg->get_tensor(i).get_name(), pool_, output_tensor_shape, msg->get_tensor(i).data_type(),
-      *cuda_stream_);
-    auto output_handle = cvcuda_utils::WrapCVCUDATensor(
-      tensor, std::move(output_write_handle), output_shape, dtype, output_tensor_layout);
-    tensor.set_name(output_tensor_name_);
-    if (input_shape.size() == output_shape.size()) {
-      reformat_op_(*cuda_stream_, input_handle.get_tensor(), output_handle.get_tensor());
-    } else if (input_shape.size() + 1 == output_shape.size() && output_shape[0] == 1) {
-      auto input_data = msg->get_read_handle(*cuda_stream_, i).get_ptr();
-      auto output_data =
-        output_handle.get_tensor().exportData<nvcv::TensorDataStridedCuda>()->basePtr();
+  TensorList output_tensor_list;
+  output_tensor_list.header = msg->header;
+  output_tensor_list.names.reserve(msg->tensors.size());
+  output_tensor_list.tensors.reserve(msg->tensors.size());
 
-      cudaMemcpyAsync(output_data, input_data,
-        input_tensor.bytes_per_element() * input_tensor.element_count(),
-        cudaMemcpyDeviceToDevice, *cuda_stream_);
-    } else {
-      RCLCPP_DEBUG(get_logger(),
-        "[ReshapeNode] Input and output tensor shapes do not match, skipping reformat");
+  for (size_t i = 0; i < msg->tensors.size(); ++i) {
+    const TensorConv::Tensor & input_tensor = msg->tensors[i];
+    const size_t msg_elems = TensorConv::num_elements(
+      std::vector<int64_t>(input_tensor.shape.begin(), input_tensor.shape.end()));
+    const size_t cfg_elems = TensorConv::num_elements(input_tensor_shape_);
+    if (msg_elems != cfg_elems) {
+      RCLCPP_ERROR(
+        get_logger(),
+        "[ReshapeNode] Input tensor element count (%zu) does not match configured "
+        "input_tensor_shape (%zu); skipping",
+        msg_elems, cfg_elems);
+      continue;
     }
-    output_tensor_list->add_tensor(tensor);
+
+    TensorConv::Tensor output_tensor;
+    try {
+      auto input_handle = TensorConv::from_input_tensor(
+        input_tensor, *cuda_stream_, input_layout, input_tensor_shape_);
+      output_tensor = TensorConv::allocate_tensor(
+        output_tensor_shape_, input_tensor.dtype_code, input_tensor.dtype_bits,
+        input_tensor.dtype_lanes);
+      auto output_handle = TensorConv::from_output_tensor(
+        output_tensor, *cuda_stream_, output_layout);
+
+      if (input_rank == output_rank) {
+        reformat_op_(*cuda_stream_, input_handle, output_handle);
+      } else if (input_rank + 1 == output_rank && output_tensor_shape_[0] == 1) {
+        const size_t size_bytes = cfg_elems * static_cast<size_t>(
+          TensorConv::bytes_per_element(input_tensor.dtype_bits, input_tensor.dtype_lanes));
+        auto input_data = input_handle.exportData<nvcv::TensorDataStridedCuda>();
+        auto output_data = output_handle.exportData<nvcv::TensorDataStridedCuda>();
+        cudaError_t err = cudaMemcpyAsync(
+          output_data->basePtr(), input_data->basePtr(), size_bytes,
+          cudaMemcpyDeviceToDevice, *cuda_stream_);
+        if (err != cudaSuccess) {
+          RCLCPP_ERROR(
+            get_logger(), "[ReshapeNode] cudaMemcpyAsync failed: %s",
+            cudaGetErrorString(err));
+          continue;
+        }
+      } else {
+        RCLCPP_DEBUG(
+          get_logger(),
+          "[ReshapeNode] Input and output tensor shapes do not match, skipping reformat");
+        continue;
+      }
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(get_logger(), "[ReshapeNode] Failed to reshape tensor: %s", e.what());
+      continue;
+    }
+
+    output_tensor_list.names.push_back(output_tensor_name_);
+    output_tensor_list.tensors.push_back(std::move(output_tensor));
   }
-  tensor_pub_->publish(std::move(output_tensor_list));
+
+  if (!output_tensor_list.tensors.empty()) {
+    tensor_pub_->publish(std::move(output_tensor_list));
+  }
 }
 
 }  // namespace dnn_inference
