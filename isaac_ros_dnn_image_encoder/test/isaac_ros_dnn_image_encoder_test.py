@@ -20,12 +20,13 @@ import pathlib
 import time
 
 
+from ament_index_python.packages import get_package_share_directory
 import cv2
 from cv_bridge import CvBridge
-from isaac_ros_tensor_list_interfaces.msg import TensorList
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest, JSONConversion
-from launch_ros.actions import ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 import pytest
 import rclpy
@@ -35,35 +36,33 @@ from sensor_msgs.msg import CameraInfo, Image
 
 @pytest.mark.rostest
 def generate_test_description():
-    dnn_image_encoder_node = ComposableNode(
-        name='dnn_image_encoder_node',
-        package='isaac_ros_dnn_image_encoder',
-        plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
-        namespace=IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
-        parameters=[{
-            'input_image_width': 1920,
-            'input_image_height': 1080,
-            'network_image_width': 512,
-            'network_image_height': 512,
+    dnn_image_encoder_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('isaac_ros_dnn_image_encoder'),
+                'launch',
+                'dnn_image_encoder.launch.py',
+            )
+        ),
+        launch_arguments={
+            'input_image_width': '1920',
+            'input_image_height': '1080',
+            'network_image_width': '512',
+            'network_image_height': '512',
             'input_encoding': 'bgr8',
-            'image_mean': [0.5, 0.5, 0.5],
-            'image_stddev': [0.5, 0.5, 0.5],
-            'enable_padding': True,
+            'image_mean': '[0.5, 0.5, 0.5]',
+            'image_stddev': '[0.5, 0.5, 0.5]',
+            'enable_padding': 'True',
+            'dnn_image_encoder_namespace': IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
+            'image_input_topic': 'image',
+            'camera_info_input_topic': 'camera_info',
+            'tensor_output_topic': 'tensors',
             'tensor_name': 'output_tensor',
-        }],
-        remappings=[('image', 'image'), ('tensors', 'tensors')])
+        }.items(),
+    )
 
     return IsaacROSDnnImageEncoderNodeTest.generate_test_description([
-        ComposableNodeContainer(
-            name='dnn_image_encoder_container',
-            package='rclcpp_components',
-            executable='component_container_mt',
-            composable_node_descriptions=[dnn_image_encoder_node],
-            namespace=IsaacROSDnnImageEncoderNodeTest.generate_namespace(),
-            output='screen',
-            arguments=['--ros-args', '--log-level', 'info',
-                       '--log-level', 'isaac_ros_test.encoder:=debug'],
-        )
+        dnn_image_encoder_launch,
     ])
 
 
@@ -125,12 +124,10 @@ class IsaacROSDnnImageEncoderNodeTest(IsaacROSBaseTest):
             cv_image = cv2.resize(cv_image, (512, 512))
             cv_image = cv2.dnn.blobFromImage(cv_image)
 
-            # Checking the number of dims in tensor. It should be 3 for the input image(RGB)
-            self.assertTrue(tensor.shape.rank == 4)
-            # Checking the height of resized tensor
-            self.assertTrue(tensor.shape.dims[2] == 512)
-            # Checking the width of resized tensor
-            self.assertTrue(tensor.shape.dims[3] == 512)
+            shape = list(tensor.shape)
+            self.assertEqual(len(shape), 4)
+            self.assertEqual(shape[2], 512)
+            self.assertEqual(shape[3], 512)
 
         finally:
             self.node.destroy_subscription(subs)

@@ -20,7 +20,7 @@ import pathlib
 import time
 
 from cv_bridge import CvBridge
-from isaac_ros_tensor_list_interfaces.msg import TensorList
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode

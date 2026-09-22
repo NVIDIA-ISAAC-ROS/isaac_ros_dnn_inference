@@ -19,7 +19,7 @@ import os
 import pathlib
 import time
 
-from isaac_ros_tensor_list_interfaces.msg import Tensor, TensorList, TensorShape
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
@@ -27,6 +27,7 @@ import numpy as np
 
 import pytest
 import rclpy
+from tensor_msgs.msg import ExperimentalTensor
 
 
 DIMENSION_WIDTH = 75
@@ -78,9 +79,10 @@ class IsaacROSInterleavedToPlanarNodeTest(IsaacROSBaseTest):
         TIMEOUT = 300
 
         TENSOR_NAME = 'input_tensor'
-        TENSOR_DATA_TYPE = 9
+        DTYPE_CODE = 2
+        DTYPE_BITS = 32
+        DTYPE_LANES = 1
         TENSOR_DIMENSIONS = [DIMENSION_HEIGHT, DIMENSION_WIDTH, DIMENSION_CHANNELS]
-        TENSOR_RANK = len(TENSOR_DIMENSIONS)
 
         received_messages = {}
 
@@ -95,21 +97,19 @@ class IsaacROSInterleavedToPlanarNodeTest(IsaacROSBaseTest):
         try:
             # Create tensor
             tensor_list = TensorList()
-            tensor = Tensor()
-            shape = TensorShape()
+            tensor = ExperimentalTensor()
 
-            shape.rank = TENSOR_RANK
-            shape.dims = TENSOR_DIMENSIONS
-            tensor.shape = shape
-
-            tensor.name = TENSOR_NAME
-            tensor.data_type = TENSOR_DATA_TYPE
-            # NOTE: we let NITROS handle stride calculation, etc
+            tensor.dtype_code = DTYPE_CODE
+            tensor.dtype_bits = DTYPE_BITS
+            tensor.dtype_lanes = DTYPE_LANES
+            tensor.shape = TENSOR_DIMENSIONS
             tensor.strides = []
+            tensor.byte_offset = 0
             tensor_data = np.zeros((DIMENSION_HEIGHT, DIMENSION_WIDTH,
                                     DIMENSION_CHANNELS), np.float32)
             tensor_data[:] = list(range(DIMENSION_CHANNELS))
             tensor.data = tensor_data.tobytes()
+            tensor_list.names = [TENSOR_NAME]
             tensor_list.tensors = [tensor]
 
             end_time = time.time() + TIMEOUT
@@ -126,15 +126,13 @@ class IsaacROSInterleavedToPlanarNodeTest(IsaacROSBaseTest):
 
             self.assertEqual(len(result_tensor_list.tensors), 1)
             result_tensor = result_tensor_list.tensors[0]
-            self.assertEqual(result_tensor.shape.rank, TENSOR_RANK)
-            self.assertEqual(result_tensor.name, 'planar_tensor')
+            self.assertEqual(result_tensor_list.names[0], 'planar_tensor')
 
             RESULTANT_DIMS = [DIMENSION_CHANNELS, DIMENSION_HEIGHT,
                               DIMENSION_WIDTH]
 
-            self.assertEqual(result_tensor.shape.dims.tolist(),
-                             RESULTANT_DIMS)
-            self.assertTrue(result_tensor.data_type == TENSOR_DATA_TYPE)
+            self.assertEqual(list(result_tensor.shape), RESULTANT_DIMS)
+            self.assertEqual(result_tensor.dtype_code, DTYPE_CODE)
 
             resultant_data = np.frombuffer(result_tensor.data, np.float32)
             resultant_data = np.reshape(resultant_data, tuple(RESULTANT_DIMS))

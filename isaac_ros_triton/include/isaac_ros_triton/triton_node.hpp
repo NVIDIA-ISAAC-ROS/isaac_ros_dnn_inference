@@ -21,19 +21,17 @@
 #include <triton/core/tritonserver.h>
 #include <cuda_runtime.h>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
-#include "isaac_ros_common/qos.hpp"
 #include "isaac_ros_common/cuda_stream.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
+#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "triton_conversions/triton_conversions.hpp"
 
 using StringList = std::vector<std::string>;
 
@@ -55,31 +53,28 @@ public:
 
   TritonNode & operator=(const TritonNode &) = delete;
 
-private:
-  // Callback for input tensor list
-  void InputCallback(const nitros::NitrosTensorList::ConstSharedPtr tensor_list);
+  static std::vector<triton_conversions::TritonTensor<cuda_buffer_backend::ReadHandle>>
+  PrepareInputHandlesForExternalConsumer(
+    const isaac_ros_tensor_msgs::msg::TensorList & tensor_list,
+    const StringList & input_tensor_names,
+    cudaStream_t stream);
 
-  // Triton Server functionality
+private:
+  void InputCallback(const isaac_ros_tensor_msgs::msg::TensorList::SharedPtr tensor_list);
+
+  isaac_ros_tensor_msgs::msg::TensorList DoInference(
+    const isaac_ros_tensor_msgs::msg::TensorList & input_tensor_list);
+
   bool InitializeTritonServer();
   void ShutdownTritonServer();
-  bool DoTritonInference(
-    const nvidia::isaac_ros::nitros::NitrosTensorList & tensor_list,
-    const std_msgs::msg::Header & header);
-
   bool InitializeBindingsMap();
 
-  // Generic Triton inference implementation
-  bool ExecuteInference(
-    const nvidia::isaac_ros::nitros::NitrosTensorList & input_tensor_list,
-    nvidia::isaac_ros::nitros::NitrosTensorListBuilder & list_builder);
+  std::vector<triton_conversions::Tensor> ExecuteInference(
+    const isaac_ros_tensor_msgs::msg::TensorList & input_tensor_list);
 
-  bool ProcessInferenceResponse(
-    TRITONSERVER_InferenceResponse * response,
-    nvidia::isaac_ros::nitros::NitrosTensorListBuilder & list_builder,
-    std::unordered_map<std::string, std::string> & output_bindings_map,
-    std::vector<std::string> output_tensor_names
-  );
-  // Triton inference parameters
+  std::vector<triton_conversions::Tensor> ProcessInferenceResponse(
+    TRITONSERVER_InferenceResponse * response);
+
   const std::string model_name_;
   const uint32_t max_batch_size_;
   const uint32_t num_concurrent_requests_;
@@ -87,47 +82,30 @@ private:
   const bool enable_triton_logging_;
   const bool enable_strict_model_;
 
-  // Input tensors
   const StringList input_tensor_names_;
   const StringList input_binding_names_;
-  const StringList input_tensor_formats_;
 
-  // Output tensors
   const StringList output_tensor_names_;
   const StringList output_binding_names_;
-  const StringList output_tensor_formats_;
 
-  // Triton logging level (0 = Error, 1 = Warn, 2 = Info, 3+ = Verbose)
   const int log_level_{0};
-
-  // Optional override for Triton backend directory (empty = auto-detect)
   const std::string backend_directory_;
 
-  // mapping between tensor name and binding name
   std::unordered_map<std::string, std::string> input_bindings_map_;
   std::unordered_map<std::string, std::string> output_bindings_map_;
 
   const int16_t input_queue_size_;
   const int16_t output_queue_size_;
 
-  // NITROS subscriber for input tensors
-  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr input_sub_;
-  // NITROS publisher for output tensors
-  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr output_pub_;
+  rclcpp::Subscription<isaac_ros_tensor_msgs::msg::TensorList>::SharedPtr input_sub_;
+  rclcpp::Publisher<isaac_ros_tensor_msgs::msg::TensorList>::SharedPtr output_pub_;
 
-  // CUDA resources
   ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
 
-  // Formats
-  std::string input_format_;
-  std::string output_format_;
-
-  // Triton server state
   std::mutex triton_mutex_;
-  bool triton_server_ready_{false};
+  std::atomic<bool> triton_server_ready_{false};
 
-  // Triton server handles (forward declarations)
-  std::unique_ptr<void, void(*)(void *)> triton_server_{nullptr, [](void *){}};
+  std::unique_ptr<void, void (*)(void *)> triton_server_{nullptr, [](void *) {}};
 
   int64_t request_id_{0};
 };

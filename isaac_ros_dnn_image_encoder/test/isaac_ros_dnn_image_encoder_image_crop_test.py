@@ -21,11 +21,12 @@ import pathlib
 import struct
 import time
 
+from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
-from isaac_ros_tensor_list_interfaces.msg import TensorList
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
-from launch_ros.actions import ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 import numpy as np
 
 import pytest
@@ -45,36 +46,33 @@ IMAGE_STDDEV = np.array([0.5, 0.5, 0.5])
 
 @pytest.mark.rostest
 def generate_test_description():
-    dnn_image_encoder_node = ComposableNode(
-        name='dnn_image_encoder_node',
-        package='isaac_ros_dnn_image_encoder',
-        plugin='nvidia::isaac_ros::dnn_inference::DnnImageEncoderNode',
-        namespace=IsaacROSDnnImageEncoderImageCropNodeTest.generate_namespace(),
-        parameters=[{
-            'input_image_width': INPUT_IMAGE_WIDTH,
-            'input_image_height': INPUT_IMAGE_HEIGHT,
-            'network_image_width': NETWORK_IMAGE_WIDTH,
-            'network_image_height': NETWORK_IMAGE_HEIGHT,
+    dnn_image_encoder_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('isaac_ros_dnn_image_encoder'),
+                'launch',
+                'dnn_image_encoder.launch.py',
+            )
+        ),
+        launch_arguments={
+            'input_image_width': str(INPUT_IMAGE_WIDTH),
+            'input_image_height': str(INPUT_IMAGE_HEIGHT),
+            'network_image_width': str(NETWORK_IMAGE_WIDTH),
+            'network_image_height': str(NETWORK_IMAGE_HEIGHT),
             'input_encoding': 'bgr8',
-            'image_mean': [0.5, 0.5, 0.5],
-            'image_stddev': [0.5, 0.5, 0.5],
-            'enable_padding': True,
+            'image_mean': '[0.5, 0.5, 0.5]',
+            'image_stddev': '[0.5, 0.5, 0.5]',
+            'enable_padding': 'True',
             'dnn_image_encoder_namespace':
                 IsaacROSDnnImageEncoderImageCropNodeTest.generate_namespace(),
-        }],
-        remappings=[('image', 'image'), ('tensors', 'tensors')])
+            'image_input_topic': 'image',
+            'camera_info_input_topic': 'camera_info',
+            'tensor_output_topic': 'tensors',
+        }.items(),
+    )
 
     return IsaacROSDnnImageEncoderImageCropNodeTest.generate_test_description([
-        ComposableNodeContainer(
-            name='dnn_image_encoder_container',
-            package='rclcpp_components',
-            executable='component_container_mt',
-            composable_node_descriptions=[dnn_image_encoder_node],
-            namespace=IsaacROSDnnImageEncoderImageCropNodeTest.generate_namespace(),
-            output='screen',
-            arguments=['--ros-args', '--log-level', 'info',
-                       '--log-level', 'isaac_ros_test.encoder:=debug'],
-        )
+        dnn_image_encoder_launch,
     ])
 
 

@@ -21,10 +21,10 @@
 #include <vector>
 
 #include "cvcuda/OpReformat.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-
-#include "rclcpp/rclcpp.hpp"
+#include "isaac_ros_common/cuda_stream.hpp"
+#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
 #include "nvcv/Tensor.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 namespace nvidia
 {
@@ -32,6 +32,9 @@ namespace isaac_ros
 {
 namespace dnn_inference
 {
+
+using TensorList = isaac_ros_tensor_msgs::msg::TensorList;
+
 class InterleavedToPlanarNode : public rclcpp::Node
 {
 public:
@@ -39,25 +42,17 @@ public:
   ~InterleavedToPlanarNode();
 
 private:
-  void InterleavedToPlanarCallback(
-    const nvidia::isaac_ros::nitros::NitrosTensorList::SharedPtr msg);
+  void InterleavedToPlanarCallback(const TensorList::SharedPtr msg);
 
-  // Parameters
   std::vector<int64_t> input_tensor_shape_;
-  const int64_t memory_pool_block_size_;
-  const int64_t memory_pool_num_blocks_;
   std::string output_tensor_name_;
   const rclcpp::QoS input_qos_;
   const rclcpp::QoS output_qos_;
 
-  // Subscribers & Publishers
-  rclcpp::Subscription<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr image_sub_;
-  rclcpp::Publisher<nvidia::isaac_ros::nitros::NitrosTensorList>::SharedPtr image_pub_;
+  rclcpp::Subscription<TensorList>::SharedPtr image_sub_;
+  rclcpp::Publisher<TensorList>::SharedPtr image_pub_;
 
-  // Resources
   ::nvidia::isaac_ros::common::CudaStreamPtr cuda_stream_;
-  nvidia::isaac_ros::nitros::CUDAMemoryPool pool_;
-
   cvcuda::Reformat reformat_op_;
 };
 

@@ -19,7 +19,7 @@ import os
 import pathlib
 import time
 
-from isaac_ros_tensor_list_interfaces.msg import Tensor, TensorList, TensorShape
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
@@ -27,6 +27,7 @@ import numpy as np
 
 import pytest
 import rclpy
+from tensor_msgs.msg import ExperimentalTensor
 
 
 DIMENSION_WIDTH = 100
@@ -88,9 +89,10 @@ class IsaacROSNormalizeNodeTest(IsaacROSBaseTest):
                          BLUE_EXPECTED_VAL]
 
         TENSOR_NAME = 'tensor'
-        TENSOR_DATA_TYPE = 9
+        DTYPE_CODE = 2
+        DTYPE_BITS = 32
+        DTYPE_LANES = 1
         TENSOR_DIMENSIONS = [DIMENSION_HEIGHT, DIMENSION_WIDTH, DIMENSION_CHANNELS]
-        TENSOR_RANK = len(TENSOR_DIMENSIONS)
 
         self.generate_namespace_lookup(['tensor', 'image', 'tensors'])
 
@@ -102,21 +104,19 @@ class IsaacROSNormalizeNodeTest(IsaacROSBaseTest):
 
         try:
             tensor_list = TensorList()
-            tensor = Tensor()
-            shape = TensorShape()
+            tensor = ExperimentalTensor()
 
-            shape.rank = TENSOR_RANK
-            shape.dims = TENSOR_DIMENSIONS
-            tensor.shape = shape
-
-            tensor.name = TENSOR_NAME
-            tensor.data_type = TENSOR_DATA_TYPE
-            # NOTE: we let NITROS handle stride calculation, etc
+            tensor.dtype_code = DTYPE_CODE
+            tensor.dtype_bits = DTYPE_BITS
+            tensor.dtype_lanes = DTYPE_LANES
+            tensor.shape = TENSOR_DIMENSIONS
             tensor.strides = []
+            tensor.byte_offset = 0
             tensor_data = np.zeros((DIMENSION_HEIGHT, DIMENSION_WIDTH,
                                     DIMENSION_CHANNELS), np.float32)
             tensor_data[:] = 1.0
             tensor.data = tensor_data.tobytes()
+            tensor_list.names = [TENSOR_NAME]
             tensor_list.tensors = [tensor]
 
             end_time = time.time() + TIMEOUT
@@ -131,15 +131,12 @@ class IsaacROSNormalizeNodeTest(IsaacROSBaseTest):
             self.assertTrue(done, 'Appropriate output not received')
             tensor = received_messages['tensors'].tensors[0]
 
-            # The tensor has the format HWC and is a float array, so
-            # use numpy to interpret it as such, and then reshape it
             normalized_tensor = np.frombuffer(tensor.data, np.float32)
-            normalized_tensor = normalized_tensor.reshape(DIMENSION_HEIGHT,
-                                                          DIMENSION_WIDTH,
-                                                          DIMENSION_CHANNELS)
+            normalized_tensor = normalized_tensor.reshape(
+                1, DIMENSION_HEIGHT, DIMENSION_WIDTH, DIMENSION_CHANNELS)
             for c in range(DIMENSION_CHANNELS):
                 self.assertTrue(
-                    (np.round(normalized_tensor[:, :, c], 1) == EXPECTED_VALS[c]).all()
+                    (np.round(normalized_tensor[0, :, :, c], 1) == EXPECTED_VALS[c]).all()
                 )
         finally:
             self.node.destroy_subscription(subs)

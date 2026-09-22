@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,9 +16,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+from pathlib import Path
+import shutil
+import tempfile
 import time
 
-from isaac_ros_tensor_list_interfaces.msg import Tensor, TensorList, TensorShape
+from ament_index_python.packages import get_package_prefix
+from isaac_ros_tensor_msgs.msg import TensorList
 from isaac_ros_test import IsaacROSBaseTest
 import launch
 from launch_ros.actions import ComposableNodeContainer
@@ -27,14 +31,40 @@ import launch_testing
 
 import pytest
 import rclpy
+from tensor_msgs.msg import ExperimentalTensor
+
+
+MODEL_NAME = 'mobilenetv2-1.0_triton_onnx'
+MODEL_REPOSITORY = tempfile.TemporaryDirectory()
+
+
+def create_model_repository() -> str:
+    """Create a Triton model repository with an unrelated non-Triton sibling."""
+    model_repository = Path(MODEL_REPOSITORY.name)
+    source_model = Path(__file__).resolve().parent / 'models' / MODEL_NAME
+    shutil.copytree(source_model, model_repository / MODEL_NAME)
+
+    extra_model_dir = model_repository / 'non_triton_onnx'
+    extra_model_dir.mkdir()
+    (extra_model_dir / 'model.onnx').write_text(
+        'This file intentionally is not a valid Triton model repository entry.')
+
+    return str(model_repository)
+
+
+def get_backend_directory() -> str:
+    """Return the Triton backend directory from the local build tree."""
+    package_prefix = Path(get_package_prefix('isaac_ros_triton'))
+    backend_directory = (
+        package_prefix.parent.parent / 'build' / 'isaac_ros_triton' /
+        '_deps' / 'tritonserver-src' / 'backends')
+    return str(backend_directory) if backend_directory.exists() else ''
 
 
 @pytest.mark.rostest
 def generate_test_description():
     """Generate launch description with all Triton ROS 2 nodes for testing."""
-    # Loads and runs mobilenetv2-1.0
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    model_dir = dir_path + '/models'
+    model_dir = create_model_repository()
 
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -45,13 +75,14 @@ def generate_test_description():
         namespace=IsaacROSTritonNodeTest.generate_namespace(),
         plugin='nvidia::isaac_ros::dnn_inference::TritonNode',
         parameters=[{
-            'model_name': 'mobilenetv2-1.0_triton_onnx',
+            'model_name': MODEL_NAME,
             'model_repository_paths': [model_dir],
             'max_batch_size': 0,
             'input_binding_names': ['data'],
             'output_binding_names': ['mobilenetv20_output_flatten0_reshape0'],
             'input_tensor_names': ['input'],
-            'output_tensor_names': ['output']
+            'output_tensor_names': ['output'],
+            'backend_directory': get_backend_directory(),
         }]
     )
 
@@ -79,18 +110,14 @@ class IsaacROSTritonNodeTest(IsaacROSBaseTest):
     3. Verify received tensors are the correct dimensions
     """
 
-    # Using default ROS-GXF Bridge output tensor channel configured in 'run_triton_inference' exe
     SUBSCRIBER_CHANNEL = 'tensor_sub'
 
-    # Mobilenetv2-1.0 output tensor properties to verify
     NAME = 'output'
-    DATA_TYPE = 9
+    DTYPE_CODE = 2
+    DTYPE_BITS = 32
+    DTYPE_LANES = 1
     DIMENSIONS = [1, 1000]
-    RANK = 2
-    STRIDES = [4000, 4]
     DATA_LENGTH = 4000
-
-    # Timeout for first successful inference (model loading + inference pipeline ready)
     TIMEOUT_SEC = 300
 
     def test_triton_node(self) -> None:
@@ -117,23 +144,20 @@ class IsaacROSTritonNodeTest(IsaacROSBaseTest):
             TensorList, self.namespaces['tensor_pub'], self.DEFAULT_QOS)
 
         try:
-            # Create tensor compatible with mobilenetv2-1.0
             pub_tensor_list = TensorList()
-            pub_tensor = Tensor()
-            pub_shape = TensorShape()
+            pub_tensor = ExperimentalTensor()
 
-            pub_shape.rank = 4
-            pub_shape.dims = [1, 3, 224, 224]
-            pub_tensor.shape = pub_shape
-
-            pub_tensor.name = 'input'
-            pub_tensor.data_type = self.DATA_TYPE
+            pub_tensor.dtype_code = self.DTYPE_CODE
+            pub_tensor.dtype_bits = self.DTYPE_BITS
+            pub_tensor.dtype_lanes = self.DTYPE_LANES
+            pub_tensor.shape = [1, 3, 224, 224]
             pub_tensor.strides = []
+            pub_tensor.byte_offset = 0
             pub_tensor.data = [0] * 602112
 
+            pub_tensor_list.names = ['input']
             pub_tensor_list.tensors = [pub_tensor]
 
-            # Publish tensors until we receive at least one inference response
             self.node._logger.info(
                 'Publishing tensors until inference response received '
                 f'(timeout={self.TIMEOUT_SEC}s)')
@@ -148,58 +172,48 @@ class IsaacROSTritonNodeTest(IsaacROSBaseTest):
             self.node._logger.info(
                 f'Received inference response after {time.time() - start_time:.1f}s')
 
-            # Verify received tensor properties match mobilenetv2-1.0 output
             for tensor_list, _ in received_messages[subscriber_topic_namespace]:
                 tensor = tensor_list.tensors[0]
+                tensor_name = tensor_list.names[0]
 
-                # Verify all tensor properties match that of default mobilenetv2-1.0
                 self.assertEqual(
-                    tensor.name, self.NAME,
-                    f'Unexpected tensor name, expected: {self.NAME} received: {tensor.name}'
+                    tensor_name, self.NAME,
+                    f'Unexpected tensor name, expected: {self.NAME} received: {tensor_name}'
                 )
                 self.assertEqual(
-                    tensor.data_type, self.DATA_TYPE,
-                    f'Unexpected tensor data type, expected: {self.DATA_TYPE} '
-                    f'received: {tensor.data_type}'
+                    tensor.dtype_code, self.DTYPE_CODE,
+                    f'Unexpected tensor dtype_code, expected: {self.DTYPE_CODE} '
+                    f'received: {tensor.dtype_code}'
                 )
                 self.assertEqual(
-                    tensor.strides.tolist(), self.STRIDES,
-                    f'Unexpected tensor strides, expected: {self.STRIDES} '
-                    f'received: {tensor.strides}'
+                    tensor.dtype_bits, self.DTYPE_BITS,
+                    f'Unexpected tensor dtype_bits, expected: {self.DTYPE_BITS} '
+                    f'received: {tensor.dtype_bits}'
                 )
                 self.assertEqual(
                     len(tensor.data.tolist()), self.DATA_LENGTH,
                     f'Unexpected tensor length, expected: {self.DATA_LENGTH} '
                     f'received: {len(tensor.data)}'
                 )
-
-                shape = tensor.shape
-
                 self.assertEqual(
-                    shape.rank, self.RANK,
-                    f'Unexpected tensor rank, expected: {self.RANK} received: {shape.rank}'
-                )
-                self.assertEqual(
-                    shape.dims.tolist(), self.DIMENSIONS,
+                    tensor.shape.tolist(), self.DIMENSIONS,
                     f'Unexpected tensor dimensions, expected: {self.DIMENSIONS} '
-                    f'received: {shape.dims}'
+                    f'received: {tensor.shape}'
                 )
 
-            # Log properties of last received tensor
             tensor_list, _ = received_messages[subscriber_topic_namespace][-1]
             tensor = tensor_list.tensors[0]
-            shape = tensor.shape
+            tensor_name = tensor_list.names[0]
             length = len(tensor.data.tolist())
-            strides = tensor.strides.tolist()
-            dimensions = shape.dims.tolist()
+            dimensions = tensor.shape.tolist()
 
             self.node._logger.info(
                 f'Received Tensor Properties:\n'
-                f'Name: {tensor.name}\n'
-                f'Data Type: {tensor.data_type}\n'
-                f'Strides: {strides}\n'
+                f'Name: {tensor_name}\n'
+                f'DType Code: {tensor.dtype_code}\n'
+                f'DType Bits: {tensor.dtype_bits}\n'
+                f'DType Lanes: {tensor.dtype_lanes}\n'
                 f'Byte Length: {length}\n'
-                f'Rank: {shape.rank}\n'
                 f'Dimensions: {dimensions}'
             )
 
