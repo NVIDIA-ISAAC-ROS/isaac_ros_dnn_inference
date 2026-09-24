@@ -25,104 +25,51 @@ endif()
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
-# Triton Server integration - always enabled
-include(FetchContent)
-
-# Only prebuilt tarball is supported. Source builds are not allowed.
-if(NOT TRITON_SERVER_TARBALL_URL)
-  if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    set(_TRITON_BASE_URL "https://artifactory.pdx.nvidia.com/artifactory")
-    set(_TRITON_PATH "sw-isaac-ros-generic-local/triton/tritonserver2.69.0-sbsa.tar.gz")
-    set(TRITON_SERVER_TARBALL_URL "${_TRITON_BASE_URL}/${_TRITON_PATH}")
-    message(
-      STATUS "Using default Triton tarball for aarch64: ${TRITON_SERVER_TARBALL_URL}"
-    )
-  elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
-    set(_TRITON_BASE_URL "https://artifactory.pdx.nvidia.com/artifactory")
-    set(_TRITON_PATH "sw-isaac-ros-generic-local/triton/tritonserver2.69.0.tar.gz")
-    set(TRITON_SERVER_TARBALL_URL "${_TRITON_BASE_URL}/${_TRITON_PATH}")
-    message(STATUS "Using default Triton x86_64 tarball: ${TRITON_SERVER_TARBALL_URL}")
-  else()
-    message(
-      FATAL_ERROR
-      "TRITON_SERVER_TARBALL_URL must be provided for ${CMAKE_SYSTEM_PROCESSOR}. "
-      "Only prebuilt tarballs are supported."
-    )
-  endif()
-endif()
-
-set(
-  TRITON_SERVER_TARBALL_URL
-  "${TRITON_SERVER_TARBALL_URL}"
-  CACHE STRING "URL to prebuilt Triton Server tarball"
+# Triton Server is installed under /opt by the triton-server Debian dependency.
+find_path(
+  _TRITON_INC_DIR
+  NAMES triton/core/tritonserver.h
+  PATHS /opt/tritonserver/include
+  NO_DEFAULT_PATH
 )
-
-# Download and extract the Triton server tarball
-fetchcontent_declare(
-  tritonserver
-  URL ${TRITON_SERVER_TARBALL_URL}
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+find_library(
+  _TRITONSERVER_SO
+  NAMES tritonserver
+  PATHS /opt/tritonserver/lib /opt/tritonserver/lib64
+  NO_DEFAULT_PATH
 )
-fetchcontent_populate(tritonserver)
-
-# Locate header and library recursively in the extracted content
-file(GLOB_RECURSE _TRITON_HDR_CANDIDATES "${tritonserver_SOURCE_DIR}/*/tritonserver.h")
-list(LENGTH _TRITON_HDR_CANDIDATES _HDR_COUNT)
-if(_HDR_COUNT GREATER 0)
-  list(GET _TRITON_HDR_CANDIDATES 0 _TRITONSERVER_H)
-  # Use the include directory, not the triton/core subdirectory
-  get_filename_component(_TRITON_CORE_DIR "${_TRITONSERVER_H}" DIRECTORY)
-  get_filename_component(_TRITON_DIR "${_TRITON_CORE_DIR}" DIRECTORY)
-  get_filename_component(_TRITON_INC_DIR "${_TRITON_DIR}" DIRECTORY)
-  message(STATUS "Found tritonserver.h at: ${_TRITONSERVER_H}")
-  message(STATUS "Setting include directory to: ${_TRITON_INC_DIR}")
-else()
-  message(FATAL_ERROR "Could not find tritonserver.h under ${tritonserver_SOURCE_DIR}")
+if(NOT _TRITON_INC_DIR OR NOT _TRITONSERVER_SO)
+  message(
+    FATAL_ERROR
+    "The triton-server Debian dependency is not installed under /opt/tritonserver"
+  )
 endif()
-
-file(GLOB_RECURSE _TRITON_LIB_CANDIDATES "${tritonserver_SOURCE_DIR}/*/libtritonserver.so")
-list(LENGTH _TRITON_LIB_CANDIDATES _LIB_COUNT)
-if(_LIB_COUNT GREATER 0)
-  list(GET _TRITON_LIB_CANDIDATES 0 _TRITONSERVER_SO)
-  get_filename_component(_TRITON_LIB_DIR "${_TRITONSERVER_SO}" DIRECTORY)
-  message(STATUS "Found libtritonserver.so at: ${_TRITONSERVER_SO}")
-else()
-  message(FATAL_ERROR "Could not locate libtritonserver.so under ${tritonserver_SOURCE_DIR}")
-endif()
+get_filename_component(_TRITON_LIB_DIR "${_TRITONSERVER_SO}" DIRECTORY)
 
 # TritonNode
 ament_auto_add_library(triton_node SHARED src/triton_node.cpp)
 find_package(CUDAToolkit REQUIRED)
 
-# Add Triton dependencies if found
-if(_HDR_COUNT GREATER 0)
-  target_include_directories(triton_node PRIVATE ${_TRITON_INC_DIR})
-endif()
-if(_LIB_COUNT GREATER 0)
-  # Create an imported target for Triton
-  add_library(tritonserver::tritonserver SHARED IMPORTED)
-  set_target_properties(tritonserver::tritonserver PROPERTIES
-    IMPORTED_LOCATION "${_TRITON_LIB_DIR}/libtritonserver.so"
-    INTERFACE_INCLUDE_DIRECTORIES "${_TRITON_INC_DIR}"
-  )
-  target_link_libraries(triton_node
-    tritonserver::tritonserver
-    dl
-    pthread
-    CUDA::cudart
-    CUDA::cuda_driver
-  )
-endif()
+target_include_directories(triton_node PRIVATE ${_TRITON_INC_DIR})
+add_library(tritonserver::tritonserver SHARED IMPORTED)
+set_target_properties(tritonserver::tritonserver PROPERTIES
+  IMPORTED_LOCATION "${_TRITONSERVER_SO}"
+  INTERFACE_INCLUDE_DIRECTORIES "${_TRITON_INC_DIR}"
+)
+target_link_libraries(triton_node
+  tritonserver::tritonserver
+  dl
+  pthread
+  CUDA::cudart
+  CUDA::cuda_driver
+)
 rclcpp_components_register_nodes(triton_node "nvidia::isaac_ros::dnn_inference::TritonNode")
 set(
   node_plugins
   "${node_plugins}nvidia::isaac_ros::dnn_inference::TritonNode;$<TARGET_FILE:triton_node>\n"
 )
-# libtritonserver.so is fetched into the build tree (_deps/tritonserver-src/lib).
-# INSTALL_RPATH_USE_LINK_PATH intentionally drops build-tree dirs from the install
-# RPATH, so add the Triton lib dir explicitly. Without this, triton_node.so cannot
-# resolve its direct dependency libtritonserver.so, and because DT_RUNPATH is not
-# transitive, consumers (e.g. triton_node_test) fail to load it either.
+# Keep the Triton Debian library directory in the installed RPATH so consumers
+# such as triton_node_test can resolve libtritonserver.so directly.
 set_target_properties(triton_node PROPERTIES
   BUILD_WITH_INSTALL_RPATH TRUE
   BUILD_RPATH_USE_ORIGIN TRUE
