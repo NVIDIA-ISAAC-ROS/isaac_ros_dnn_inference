@@ -18,19 +18,22 @@
 #include "isaac_ros_triton/triton_node.hpp"
 
 #include <cuda_runtime.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "ensemble_tracer.hpp"
+#include "isaac_common/tracing/nvtx_scope.hpp"
 #include "isaac_ros_common/qos.hpp"
 #include "isaac_ros_tensor_msgs/tensor_utils.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -216,8 +219,8 @@ TritonNode::TritonNode(const rclcpp::NodeOptions & options)
   output_binding_names_(declare_parameter<StringList>("output_binding_names", StringList())),
   log_level_(declare_parameter<int>("log_level", 0)),
   backend_directory_(declare_parameter<std::string>("backend_directory", "")),
-  input_queue_size_(declare_parameter<int16_t>("input_queue_size", 10)),
-  output_queue_size_(declare_parameter<int16_t>("output_queue_size", 10))
+  input_queue_size_(declare_parameter<int16_t>("input_queue_size", 1)),
+  output_queue_size_(declare_parameter<int16_t>("output_queue_size", 1))
 {
   RCLCPP_DEBUG(get_logger(), "[TritonNode] Constructing Triton inference server wrapper");
 
@@ -295,6 +298,13 @@ TritonNode::TritonNode(const rclcpp::NodeOptions & options)
 
 void TritonNode::InputCallback(const TensorList::SharedPtr tensor_list)
 {
+  // This callback only; convert_to_custom is a sibling range. Payload is the correlation key.
+  static const nvidia::isaac_ros::tracing::RegisteredName inference_name{"gr00t:inference"};
+  const auto request_id = static_cast<uint64_t>(
+    rclcpp::Time(tensor_list->header.stamp).nanoseconds());
+  const nvidia::isaac_ros::tracing::ScopedRange inference_span{
+    inference_name, nvidia::isaac_ros::tracing::kColorUpdate, request_id};
+
   try {
     if (!triton_server_ready_) {
       RCLCPP_ERROR(get_logger(), "[TritonNode] Triton server not ready, dropping input");
@@ -550,6 +560,8 @@ void TritonNode::ShutdownTritonServer()
 std::vector<TritonConv::Tensor> TritonNode::ProcessInferenceResponse(
   TRITONSERVER_InferenceResponse * response)
 {
+  ISAAC_DEPLOY_NVTX_SCOPE("gr00t:process_response", nvidia::isaac_ros::tracing::kColorOutputTerm);
+
   uint32_t output_count = 0;
   TRITONSERVER_Error * err = TRITONSERVER_InferenceResponseOutputCount(response, &output_count);
   if (err != nullptr) {
@@ -634,6 +646,9 @@ TritonNode::PrepareInputHandlesForExternalConsumer(
   const StringList & input_tensor_names,
   cudaStream_t stream)
 {
+  // Track NITROS type adaptation separately from inference.
+  ISAAC_DEPLOY_NVTX_SCOPE("gr00t:prepare_inputs", nvidia::isaac_ros::tracing::kColorInputTerm);
+
   std::vector<TritonConv::TritonTensor<cuda_buffer_backend::ReadHandle>> input_handles;
   input_handles.reserve(input_tensor_names.size());
 
@@ -673,6 +688,13 @@ void InferRequestRelease(
 std::vector<triton_conversions::Tensor> TritonNode::ExecuteInference(
   const TensorList & tensor_list)
 {
+  ISAAC_DEPLOY_NVTX_SCOPE("gr00t:execute", nvidia::isaac_ros::tracing::kColorRunner);
+
+  // Mirrors the runner:* phases on the WBC path so the two policies are directly comparable.
+  static const nvidia::isaac_ros::tracing::RegisteredName build_name{"gr00t:build_request"};
+  nvidia::isaac_ros::tracing::ScopedRange build_span{
+    build_name, nvidia::isaac_ros::tracing::kColorBuildRequest};
+
   auto server = reinterpret_cast<TRITONSERVER_Server *>(triton_server_.get());
 
   TRITONSERVER_InferenceRequest * request = nullptr;
@@ -782,7 +804,28 @@ std::vector<triton_conversions::Tensor> TritonNode::ExecuteInference(
     TRITONSERVER_ErrorDelete(err);
     throw std::runtime_error("[TritonNode] Failed to set response callback: " + msg);
   }
-  err = TRITONSERVER_ServerInferAsync(server, request, nullptr);
+  // Ensemble traces need per-model state because child traces share the callback user pointer.
+  TRITONSERVER_InferenceTrace * trace{nullptr};
+  if (nvidia::isaac_ros::tracing::enabled()) {
+    TRITONSERVER_Error * trace_err = TRITONSERVER_InferenceTraceNew(
+        &trace, TRITONSERVER_TRACE_LEVEL_TIMESTAMPS, 0 /* parent_id */,
+        EnsembleTracer::activity_fn, EnsembleTracer::release_fn,
+        &EnsembleTracer::instance());
+    if (trace_err != nullptr) {
+      // Tracing is best-effort: proceed untraced rather than failing the inference.
+      TRITONSERVER_ErrorDelete(trace_err);
+      trace = nullptr;
+    }
+  }
+
+  build_span.end();
+
+  // Triton unconditionally takes ownership of 'trace' (including on error), so it must not be
+  // deleted here.
+  {
+    ISAAC_DEPLOY_NVTX_SCOPE("gr00t:submit", nvidia::isaac_ros::tracing::kColorRunner);
+    err = TRITONSERVER_ServerInferAsync(server, request, trace);
+  }
   if (err != nullptr) {
     const std::string msg = TRITONSERVER_ErrorMessage(err);
     TRITONSERVER_ErrorDelete(err);
@@ -792,7 +835,11 @@ std::vector<triton_conversions::Tensor> TritonNode::ExecuteInference(
 
   // The InferResponseComplete function sets the std::promise so
   // that this thread will block until the response is returned.
-  TRITONSERVER_InferenceResponse * completed_response = completed.get();
+  TRITONSERVER_InferenceResponse * completed_response = nullptr;
+  {
+    ISAAC_DEPLOY_NVTX_SCOPE("gr00t:wait_response", nvidia::isaac_ros::tracing::kColorWaitResponse);
+    completed_response = completed.get();
+  }
   struct InferenceResponseDeleter
   {
     void operator()(TRITONSERVER_InferenceResponse * response) const
@@ -806,7 +853,10 @@ std::vector<triton_conversions::Tensor> TritonNode::ExecuteInference(
     InferenceResponseDeleter> response_guard(completed_response);
 
   // Keep release_promise alive until Triton invokes InferRequestRelease.
-  release_future.get();
+  {
+    ISAAC_DEPLOY_NVTX_SCOPE("gr00t:wait_release", nvidia::isaac_ros::tracing::kColorWaitRelease);
+    release_future.get();
+  }
   if (TRITONSERVER_InferenceResponseError(completed_response) != nullptr) {
     std::string error_message =
       TRITONSERVER_ErrorMessage(TRITONSERVER_InferenceResponseError(completed_response));

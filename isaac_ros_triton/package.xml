@@ -21,7 +21,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>isaac_ros_triton</name>
-  <version>5.0.0</version>
+  <version>5.1.0</version>
   <description>DNN Inference support for Isaac ROS</description>
 
   <maintainer email="isaac-ros-maintainers@nvidia.com">Isaac ROS Maintainers</maintainer>
@@ -38,9 +38,15 @@
   <depend>isaac_ros_tensor_msgs</depend>
   <depend>tensor_msgs</depend>
   <depend>triton_conversions</depend>
+  <!-- Header-only: nvtx_scope.hpp, for the deploy pipeline's NVTX trace ranges. -->
+  <depend>isaac_common</depend>
   <depend>libcudnn9-cuda-13</depend>
   <depend>tensorrt</depend>
   <depend>triton-server</depend>
+
+  <!-- Triton's ONNX Runtime CUDA provider dlopens these from the system CUDA install. -->
+  <exec_depend condition="$ISAAC_ROS_PLATFORM != arm64-fastos">cuda-toolkit-13-2</exec_depend>
+  <exec_depend condition="$ISAAC_ROS_PLATFORM == arm64-fastos">cuda-toolkit-13-0</exec_depend>
 
   <build_depend>isaac_ros_common</build_depend>
   <build_depend>ament_index_cpp</build_depend>

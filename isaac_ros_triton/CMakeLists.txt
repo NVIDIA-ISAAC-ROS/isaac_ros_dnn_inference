@@ -46,16 +46,27 @@ if(NOT _TRITON_INC_DIR OR NOT _TRITONSERVER_SO)
 endif()
 get_filename_component(_TRITON_LIB_DIR "${_TRITONSERVER_SO}" DIRECTORY)
 
+# NVTX ranges for the deploy pipeline (isaac_common/tracing/nvtx_scope.hpp). Directory-scoped, so
+# every target here gets it; header-only, and dormant at runtime unless a profiler is attached.
+find_package(CUDAToolkit REQUIRED)
+option(USE_NVTX "Enable NVTX markers for improved profiling (if available)" ON)
+if(USE_NVTX)
+  add_definitions(-DUSE_NVTX)
+  include_directories(${CUDAToolkit_INCLUDE_DIRS} ${isaac_common_INCLUDE_DIRS})
+endif()
+
 # TritonNode
 ament_auto_add_library(triton_node SHARED src/triton_node.cpp)
-find_package(CUDAToolkit REQUIRED)
 
 target_include_directories(triton_node PRIVATE ${_TRITON_INC_DIR})
-add_library(tritonserver::tritonserver SHARED IMPORTED)
-set_target_properties(tritonserver::tritonserver PROPERTIES
-  IMPORTED_LOCATION "${_TRITONSERVER_SO}"
-  INTERFACE_INCLUDE_DIRECTORIES "${_TRITON_INC_DIR}"
-)
+# isaac_deploy_core's extras may already define this imported target.
+if(NOT TARGET tritonserver::tritonserver)
+  add_library(tritonserver::tritonserver SHARED IMPORTED)
+  set_target_properties(tritonserver::tritonserver PROPERTIES
+    IMPORTED_LOCATION "${_TRITONSERVER_SO}"
+    INTERFACE_INCLUDE_DIRECTORIES "${_TRITON_INC_DIR}"
+  )
+endif()
 target_link_libraries(triton_node
   tritonserver::tritonserver
   dl
